@@ -54,7 +54,7 @@ def _analyze(record_id: str):
     peaks = detect_r_peaks(rec.signal, rec.fs)
     rr = rr_intervals_ms(peaks, rec.fs)
     hrv = time_domain_hrv(rr)
-    alerts = irregularity_alerts(rr, peaks[1:] / rec.fs)
+    alerts = irregularity_alerts(rr, peaks / rec.fs)
     return rec, peaks, hrv, alerts, evaluate_record(record_id, DATA_DIR)
 
 
@@ -81,7 +81,7 @@ def _fmt(df: pd.DataFrame) -> pd.DataFrame:
 def overview() -> None:
     st.markdown("# Heart signals you can trust, on the device")
     lead("LosTiraVida detects heartbeats in ECG, flags irregular rhythm, and abstains when the signal is too noisy "
-         "to judge. It also reads wrist and chest sensors for stress, and shares only aggregate numbers, never the raw signal.")
+         "to judge. It also recognizes physical activity from wearable sensors, and shares only aggregate numbers, never the raw signal.")
     with guard("Aggregate metrics"):
         df = _evaluate_all()
         tp, fp, fn = int(df["tp"].sum()), int(df["fp"].sum()), int(df["fn"].sum())
@@ -99,7 +99,7 @@ def overview() -> None:
         + card("Detect", "<p>R-peak detection on MIT-BIH, scored against cardiologist annotations.</p>")
         + card("Abstain", "<p>A signal quality index skips noisy windows instead of guessing.</p>")
         + card("Keep private", "<p>Only aggregate features leave the device, with a check that no raw signal does.</p>")
-        + card("Cross-check", "<p>Chest and wrist heart rate are compared and disagreements are flagged.</p>")
+        + card("Recognize activity", "<p>Heart rate and motion sensors classify physical activity, tested on unseen subjects.</p>")
         + "</div>", unsafe_allow_html=True)
 
 
@@ -183,68 +183,117 @@ def validation() -> None:
 
 
 # ---------- Wearable ----------
+ACTIVITY_NAMES = {1: "Lying", 2: "Sitting", 3: "Standing", 4: "Walking", 5: "Running", 6: "Cycling",
+                  7: "Nordic walking", 12: "Ascending stairs", 13: "Descending stairs",
+                  16: "Vacuum cleaning", 17: "Ironing", 24: "Rope jumping"}
+
+
 @st.cache_data(show_spinner="Extracting windows for all subjects")
-def _wesad_features(subjects: tuple[str, ...]) -> pd.DataFrame:
-    from losti.data_loader import load_wesad_subject
-    from losti.wearable import extract_windows
-    frames = [extract_windows(load_wesad_subject(s, DATA_DIR), 60.0, 30.0) for s in subjects]
+def _pamap2_features(subjects: tuple[str, ...]) -> pd.DataFrame:
+    from losti.data_loader import load_pamap2_subject
+    from losti.wearable import extract_pamap2_windows
+    frames = [extract_pamap2_windows(load_pamap2_subject(s, DATA_DIR), s, 10.0, 5.0) for s in subjects]
     return pd.concat(frames, ignore_index=True)
 
 
 @st.cache_data(show_spinner="Training with leave-one-subject-out")
-def _loso(subjects: tuple[str, ...]) -> pd.DataFrame:
+def _loso(subjects: tuple[str, ...]) -> tuple[pd.DataFrame, pd.DataFrame | None]:
     from losti.classifier import train_loso
-    _, per_subject = train_loso(_wesad_features(subjects))
-    return per_subject
+    feats = _pamap2_features(subjects)
+    _, per_subject = train_loso(feats, label_col="label")
+    return per_subject, feats
+
+
+def _confusion(res: pd.DataFrame) -> None:
+    """Show a confusion matrix only if train_loso attached LOSO predictions."""
+    pred = res.attrs.get("loso_predictions")
+    if not isinstance(pred, pd.DataFrame) or not {"y_true", "y_pred"} <= set(pred.columns):
+        note("The classifier does not return per-window predictions, so only per-subject results are shown.")
+        return
+    labels = sorted(set(pred["y_true"]) | set(pred["y_pred"]))
+    names = [ACTIVITY_NAMES.get(int(i), str(i)) for i in labels]
+    cm = pd.crosstab(pred["y_true"], pred["y_pred"]).reindex(index=labels, columns=labels, fill_value=0)
+    cm = cm.div(cm.sum(axis=1).replace(0, 1), axis=0)
+    col = chart_colors()
+    fig = go.Figure(go.Heatmap(z=cm.values, x=names, y=names, zmin=0, zmax=1,
+                               colorscale=[[0, "rgba(0,0,0,0)"], [1, col["accent"]]],
+                               hovertemplate="True %{y}<br>Predicted %{x}<br>%{z:.0%}<extra></extra>"))
+    fig.update_xaxes(title_text="Predicted activity", tickangle=-45)
+    fig.update_yaxes(title_text="True activity", autorange="reversed")
+    st.plotly_chart(style_figure(fig, 420), width="stretch", config={"displaylogo": False})
 
 
 def wearable() -> None:
     st.markdown("# Wearable")
-    lead("WESAD chest and wrist sensors. A stress classifier is tested on each subject it has never seen.")
+    lead("PAMAP2 heart rate and body-worn motion sensors. An activity classifier is tested on each subject it has never seen.")
     with guard("Wearable analysis"):
-        from losti.data_loader import list_wesad_subjects
-        subjects = tuple(list_wesad_subjects(DATA_DIR))
+        from losti.data_loader import list_pamap2_subjects
+        subjects = tuple(list_pamap2_subjects(DATA_DIR))
         if not subjects:
-            note("No WESAD subjects found in data/raw. Run python scripts/download_data.py.")
-            return
-        metric_grid([("Subjects", str(len(subjects))), ("Labels", "Baseline, stress, amusement")])
-        section("Leave-one-subject-out accuracy")
-        if st.button("Run evaluation", key="loso_run") or st.session_state.get("loso_done"):
-            st.session_state["loso_done"] = True
-            res = _loso(subjects)
-            col = chart_colors()
-            fig = go.Figure(go.Bar(x=res["subject_id"], y=res["accuracy"], marker_color=col["accent"], name="Accuracy"))
-            fig.update_yaxes(title_text="Accuracy", range=[0, 1])
-            fig.update_xaxes(title_text="Held-out subject")
-            st.plotly_chart(style_figure(fig, 320), width="stretch", config={"displaylogo": False})
-            metric_grid([("Mean accuracy", f"{res['accuracy'].mean():.1%}"),
-                         ("Mean macro F1", f"{res['f1_macro'].mean():.1%}")])
-            st.dataframe(_fmt(res), hide_index=True, width="stretch")
+            note("No PAMAP2 subjects found in data/raw/pamap2. Run python scripts/download_data.py.")
         else:
-            note("Training reads every subject file and can take a few minutes. It runs once and is cached.")
-        section("Sensor disagreement")
-        sub = st.selectbox("Subject", list(subjects), key="wear_sub")
-        if st.button("Check chest against wrist", key="xcheck_run"):
-            _disagreement(sub)
+            metric_grid([("Subjects", str(len(subjects))), ("Labels", "Physical activities")])
+            section("Leave-one-subject-out accuracy")
+            if st.button("Run evaluation", key="loso_run") or st.session_state.get("loso_done"):
+                st.session_state["loso_done"] = True
+                res, feats = _loso(subjects)
+                col = chart_colors()
+                fig = go.Figure()
+                fig.add_trace(go.Bar(x=res["subject_id"].astype(str), y=res["accuracy"], marker_color=col["accent"], name="Accuracy"))
+                fig.add_trace(go.Bar(x=res["subject_id"].astype(str), y=res["f1_macro"], marker_color=col["muted"], name="Macro F1"))
+                fig.update_layout(barmode="group")
+                fig.update_yaxes(title_text="Score", range=[0, 1])
+                fig.update_xaxes(title_text="Held-out subject", type="category")
+                st.plotly_chart(style_figure(fig, 320), width="stretch", config={"displaylogo": False})
+                metric_grid([("Mean accuracy", f"{res['accuracy'].mean():.1%}"),
+                             ("Mean macro F1", f"{res['f1_macro'].mean():.1%}")])
+                st.dataframe(_fmt(res), hide_index=True, width="stretch")
+                section("Confusion matrix")
+                _confusion(res)
+            else:
+                note("Training reads every subject file and can take a few minutes. It runs once and is cached.")
+    physiology()
 
 
-def _disagreement(sub: str) -> None:
-    from losti.wearable import cross_sensor_check
-    feats = _wesad_features((sub,))
-    flat = pd.json_normalize(feats["features"]) if "features" in feats else feats
-    chest = next((c for c in flat.columns if "hr_chest" in c.lower()), None)
-    wrist = next((c for c in flat.columns if "hr_wrist" in c.lower()), None)
-    if chest is None or wrist is None:
-        note("Heart rate columns for chest and wrist were not found in the extracted features.")
-        return
-    alerts = cross_sensor_check(flat[chest].to_numpy(float), flat[wrist].to_numpy(float))
-    if not alerts:
-        note("Chest and wrist heart rate agree for this subject.")
-    for a in alerts[:50]:
-        reasons = "".join(f"<li>{e(r)}</li>" for r in a.reasons)
-        st.markdown(f'<div class="ltv-card ltv-alert body" style="margin-bottom:8px"><div class="v">'
-                    f'Sensor disagreement, windows {a.start_s:.0f} to {a.end_s:.0f}</div><ul>{reasons}</ul></div>',
-                    unsafe_allow_html=True)
+# ---------- Physiological load (DriveDB) ----------
+@st.cache_data(show_spinner="Computing physiological profile")
+def _drive_profile(record_id: str) -> tuple[pd.DataFrame, pd.Series]:
+    from losti.data_loader import load_drivedb_record
+    from losti.drivedb import load_index, physiological_profile
+    prof = physiological_profile(load_drivedb_record(record_id, DATA_DIR), 60.0)
+    return prof, load_index(prof)
+
+
+def _z(x: pd.Series) -> pd.Series:
+    sd = x.std()
+    return (x - x.mean()) / sd if sd and not np.isnan(sd) else x * 0.0
+
+
+def physiology() -> None:
+    section("Physiological load (DriveDB)")
+    note("Exploratory. DriveDB has no stress labels, so this is not a stress classifier.")
+    with guard("Physiological load"):
+        from losti.data_loader import list_drivedb_records
+        recs = list(list_drivedb_records(DATA_DIR))
+        if not recs:
+            note("No DriveDB records found in data/raw/drivedb. Run python scripts/download_data.py.")
+            return
+        rid = st.selectbox("Driving record", recs, key="drive_rec")
+        prof, load = _drive_profile(rid)
+        col = chart_colors()
+        minutes = np.arange(len(load))
+        fig = go.Figure()
+        for name, colname, dash in (("Heart rate (z-score)", "hr_mean_bpm", "dot"),
+                                    ("Skin conductance, hand (z-score)", "gsr_hand_mean", "dash")):
+            if colname in prof:
+                fig.add_trace(go.Scatter(x=minutes, y=_z(prof[colname]).to_numpy(), mode="lines", name=name,
+                                         line=dict(color=col["muted"], width=1.5, dash=dash)))
+        fig.add_trace(go.Scatter(x=minutes, y=np.asarray(load, dtype=float), mode="lines", name="Load index",
+                                 line=dict(color=col["accent"], width=2.5)))
+        fig.update_xaxes(title_text="Time (minutes)")
+        fig.update_yaxes(title_text="Z-score within record")
+        st.plotly_chart(style_figure(fig, 360), width="stretch", config={"displaylogo": False})
+        st.caption("Load index is the mean of the heart rate and skin conductance z-scores, per 60 second window.")
 
 
 # ---------- Privacy ----------
@@ -284,14 +333,19 @@ def about() -> None:
     st.markdown(
         '<div class="ltv-pair">'
         + card("Scope", "<ul><li>ECG beat detection and heart rate variability</li><li>Signal quality abstention</li>"
-               "<li>Wearable stress classification and chest-wrist cross-check</li><li>Aggregate-only data export</li></ul>")
+               "<li>Wearable activity recognition and exploratory physiological load</li><li>Aggregate-only data export</li></ul>")
         + card("Data sources",
                '<ul><li><a href="https://physionet.org/content/mitdb/1.0.0/">MIT-BIH Arrhythmia Database</a></li>'
                '<li><a href="https://physionet.org/content/nstdb/1.0.0/">MIT-BIH Noise Stress Test Database</a></li>'
-               '<li><a href="https://archive.ics.uci.edu/dataset/465/wesad+wearable+stress+and+affect+detection">WESAD</a></li></ul>')
+               '<li><a href="https://archive.ics.uci.edu/dataset/231/pamap2+physical+activity+monitoring">PAMAP2</a>, CC BY 4.0. '
+               'Reiss &amp; Stricker, ISWC 2012.</li>'
+               '<li><a href="https://physionet.org/content/drivedb/1.0.0/">Stress Recognition in Automobile Drivers (DriveDB)</a>, ODC-By v1.0. '
+               'Healey &amp; Picard, IEEE T-ITS 6(2):156&ndash;166, 2005.</li></ul>')
         + card("Limits", "<ul><li>Two-lead, 360 Hz ambulatory recordings, not spaceflight conditions</li>"
                "<li>Irregularity alerts are a screening rule, not a diagnosis</li>"
-               "<li>WESAD has 15 subjects, so results carry wide uncertainty</li></ul>")
+               "<li>DriveDB has no stress labels, so physiological load is exploratory and not a stress classifier</li>"
+               "<li>PAMAP2 labels are physical activities, not emotional or health states</li>"
+               "<li>PAMAP2 has 9 subjects, so results carry wide uncertainty</li></ul>")
         + card("Disclaimer", "<p>This is not a medical device. It is not validated for use in flight or for diagnosis, "
                "and it uses no data from astronauts.</p>")
         + "</div>", unsafe_allow_html=True)

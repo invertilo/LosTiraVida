@@ -1,231 +1,125 @@
-"""Ventanas de features a partir de WESAD (pecho + muneca) y chequeo entre sensores.
+"""Ventanas de features a partir de PAMAP2 (IMU de mano, pecho y tobillo, y frecuencia cardiaca).
 
-Sensores usados (WESAD):
-- Pecho (chest): ECG para FC de pecho (losti.ecg), Resp para tasa respiratoria.
-- Muneca (wrist): EDA y TEMP para media/pendiente y temperatura, ACC para magnitud,
-  BVP (PPG) para FC de muneca.
-Etiquetas WESAD: 1=baseline, 2=stress, 3=amusement. Se descartan 0 y 4-7.
+Por ventana: media y desviacion de FC (ignorando NaN) y media/desviacion de la magnitud del
+acelerometro (acc16) de cada IMU. Las ventanas con etiqueta mayoritaria 0 (transitorio) o con
+mas de 20% de NaN en el acelerometro de algun IMU se descartan.
 """
 
 from __future__ import annotations
 
-import math
-from typing import Any
-
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
-from scipy.signal import butter, find_peaks, sosfiltfilt
 
-from losti.ecg import detect_r_peaks, heart_rate_bpm, rr_intervals_ms
-from losti.types import Alert
-
-LABEL_FS = 700.0  # Hz, frecuencia de la etiqueta y del pecho en WESAD
-KEEP_LABELS: frozenset[int] = frozenset({1, 2, 3})
-MIN_BEATS_FOR_HR = 3  # al menos 2 intervalos RR para estimar FC
+SENSORS: tuple[str, ...] = ("hand", "chest", "ankle")
+AXES: tuple[str, ...] = ("x", "y", "z")
+TRANSIENT_LABEL = 0
+MAX_NAN_FRACTION = 0.20
 FEATURE_COLUMNS: tuple[str, ...] = (
-    "eda_mean",
-    "eda_slope",
-    "temp_mean",
-    "acc_mag_std",
-    "hr_chest",
-    "hr_wrist",
-    "resp_rate",
+    "hr_mean",
+    "hr_std",
+    *(f"acc_mag_mean_{s}" for s in SENSORS),
+    *(f"acc_mag_std_{s}" for s in SENSORS),
+)
+_REQUIRED_COLUMNS: tuple[str, ...] = (
+    "timestamp_s",
+    "activity_id",
+    "heart_rate",
+    *(f"{s}_acc16_{a}" for s in SENSORS for a in AXES),
 )
 
 _FloatArray = NDArray[np.float64]
 
 
-def _as_float(x: object) -> _FloatArray:
-    return np.asarray(x, dtype=np.float64)
+def _interp_nan(t: _FloatArray, values: _FloatArray) -> _FloatArray:
+    """Interpola linealmente los NaN de una serie dentro de la ventana (extremos: valor mas cercano)."""
+    valid = np.isfinite(values)
+    if valid.all():
+        return values
+    return np.interp(t, t[valid], values[valid])
 
 
-def _sos_bandpass(x: _FloatArray, fs: float, low: float, high: float, order: int) -> _FloatArray:
-    sos = butter(order, [low, high], btype="bandpass", fs=fs, output="sos")
-    return np.asarray(sosfiltfilt(sos, x), dtype=np.float64)
+def _mean_std(values: _FloatArray) -> tuple[float, float]:
+    finite = values[np.isfinite(values)]
+    if finite.size == 0:
+        return float("nan"), float("nan")
+    return float(np.mean(finite)), float(np.std(finite))
 
 
-def _bvp_peak_times(bvp: _FloatArray, fs: float) -> _FloatArray:
-    """Picos sistolicos de PPG (BVP de muneca) en segundos."""
-    filt = _sos_bandpass(bvp, fs, 0.5, 4.0, order=3)
-    spread = float(np.std(filt))
-    if spread == 0.0 or not math.isfinite(spread):
-        return np.empty(0, dtype=np.float64)
-    peaks, _ = find_peaks(filt, distance=max(1, int(0.33 * fs)), prominence=0.5 * spread)
-    return peaks.astype(np.float64) / fs
-
-
-def _resp_peak_times(resp: _FloatArray, fs: float) -> _FloatArray:
-    """Picos respiratorios del pecho (0.1-0.5 Hz) en segundos."""
-    filt = _sos_bandpass(resp, fs, 0.1, 0.5, order=2)
-    spread = float(np.std(filt))
-    if spread == 0.0 or not math.isfinite(spread):
-        return np.empty(0, dtype=np.float64)
-    peaks, _ = find_peaks(filt, distance=max(1, int(1.5 * fs)), prominence=0.3 * spread)
-    return peaks.astype(np.float64) / fs
-
-
-def _hr_in_window(peak_times_s: _FloatArray, t0: float, t1: float) -> float:
-    """FC (bpm) a partir de los picos dentro de [t0, t1). NaN si hay pocos latidos."""
-    inside = peak_times_s[(peak_times_s >= t0) & (peak_times_s < t1)]
-    if inside.size < MIN_BEATS_FOR_HR:
-        return float("nan")
-    rr = np.diff(inside) * 1000.0
-    return heart_rate_bpm(rr)
-
-
-def _segment(x: _FloatArray, fs: float, t0: float, t1: float) -> _FloatArray:
-    i0 = max(0, int(round(t0 * fs)))
-    i1 = min(x.shape[0], int(round(t1 * fs)))
-    return x[i0:i1]
-
-
-def _window_label(label: NDArray[np.int64], t0: float, t1: float) -> int:
-    """Etiqueta mayoritaria de la ventana (la etiqueta esta a 700 Hz)."""
-    seg = _segment(label, LABEL_FS, t0, t1)
-    if seg.size == 0:
-        return -1
-    values, counts = np.unique(seg, return_counts=True)
+def _window_label(activity: NDArray[np.int64]) -> int:
+    values, counts = np.unique(activity, return_counts=True)
     return int(values[np.argmax(counts)])
 
 
-def _eda_slope(eda: _FloatArray, fs: float, t0: float, t1: float) -> float:
-    seg = _segment(eda, fs, t0, t1)
-    if seg.size < 2:
-        return float("nan")
-    t = np.arange(seg.size, dtype=np.float64) / fs
-    return float(np.polyfit(t, seg, 1)[0])
-
-
-def _signal_rate(x: _FloatArray, duration_s: float) -> float:
-    """Frecuencia de muestreo real de una senal a partir de su duracion (la etiqueta marca la duracion)."""
-    if duration_s <= 0:
-        raise ValueError("Duracion de registro no valida")
-    return x.shape[0] / duration_s
-
-
-def extract_windows(
-    subject: dict[str, Any],
-    window_s: float = 60.0,
-    step_s: float = 30.0,
-    subject_id: str | None = None,
+def extract_pamap2_windows(
+    df: pd.DataFrame,
+    subject_id: str,
+    window_s: float = 10.0,
+    step_s: float = 5.0,
 ) -> pd.DataFrame:
-    """Extrae features por ventana de un sujeto WESAD cargado con load_wesad_subject.
+    """Extrae features por ventana de un sujeto PAMAP2 cargado con load_pamap2_subject.
 
-    Columnas: subject_id, t_start_s, label, eda_mean, eda_slope, temp_mean,
-    acc_mag_std, hr_chest, hr_wrist, resp_rate. Las ventanas con etiqueta distinta de
-    1, 2 o 3 se descartan. El id se toma de subject["subject_id"] o del argumento subject_id.
+    Columnas: subject_id, t_start_s (relativo al primer timestamp), label (activity_id
+    mayoritaria), hr_mean, hr_std, acc_mag_mean_{hand,chest,ankle}, acc_mag_std_{hand,chest,ankle}.
+    Los NaN del acelerometro se interpolan dentro de cada ventana.
     """
-    sid = subject.get("subject_id", subject_id)
-    if not isinstance(sid, str) or not sid:
-        raise ValueError("Falta el id del sujeto: pasa subject_id o incluye la clave 'subject_id'")
+    if not subject_id:
+        raise ValueError("subject_id no puede estar vacio")
     if window_s <= 0 or step_s <= 0:
         raise ValueError("window_s y step_s deben ser positivos")
+    missing = [c for c in _REQUIRED_COLUMNS if c not in df.columns]
+    if missing:
+        raise ValueError(f"Faltan columnas PAMAP2: {missing}")
 
-    label = np.asarray(subject["label"]).ravel().astype(np.int64)
-    chest: dict[str, Any] = dict(subject["chest"])
-    wrist: dict[str, Any] = dict(subject["wrist"])
-    duration_s = label.shape[0] / LABEL_FS
-
-    ecg = _as_float(chest["ECG"]).ravel()
-    resp = _as_float(chest["Resp"]).ravel()
-    ecg_fs = _signal_rate(ecg, duration_s)
-    resp_fs = _signal_rate(resp, duration_s)
-    chest_peaks = detect_r_peaks(ecg, ecg_fs).astype(np.float64) / ecg_fs
-    resp_peaks = _resp_peak_times(resp, resp_fs)
-
-    eda = _as_float(wrist["EDA"]).ravel()
-    temp = _as_float(wrist["TEMP"]).ravel()
-    acc = _as_float(wrist["ACC"])
-    bvp = _as_float(wrist["BVP"]).ravel()
-    eda_fs = _signal_rate(eda, duration_s)
-    temp_fs = _signal_rate(temp, duration_s)
-    acc_fs = _signal_rate(acc, duration_s)
-    bvp_fs = _signal_rate(bvp, duration_s)
-    acc_mag = np.sqrt(np.sum(acc**2, axis=1))
-    wrist_peaks = _bvp_peak_times(bvp, bvp_fs)
+    data = df.sort_values("timestamp_s", kind="stable")
+    ts = data["timestamp_s"].to_numpy(dtype=np.float64)
+    if ts.size == 0:
+        return pd.DataFrame(columns=["subject_id", "t_start_s", "label", *FEATURE_COLUMNS])
+    rel = ts - ts[0]
+    activity = data["activity_id"].to_numpy(dtype=np.int64)
+    hr = data["heart_rate"].to_numpy(dtype=np.float64)
+    acc = {
+        (s, a): data[f"{s}_acc16_{a}"].to_numpy(dtype=np.float64)
+        for s in SENSORS
+        for a in AXES
+    }
+    span_s = float(rel[-1])
 
     rows: list[dict[str, object]] = []
     t0 = 0.0
-    while t0 + window_s <= duration_s + 1e-9:
+    while t0 + window_s <= span_s + 1e-9:
         t1 = t0 + window_s
-        lab = _window_label(label, t0, t1)
-        if lab in KEEP_LABELS:
-            eda_seg = _segment(eda, eda_fs, t0, t1)
-            temp_seg = _segment(temp, temp_fs, t0, t1)
-            acc_seg = _segment(acc_mag, acc_fs, t0, t1)
-            resp_count = int(np.sum((resp_peaks >= t0) & (resp_peaks < t1)))
-            rows.append(
-                {
-                    "subject_id": sid,
-                    "t_start_s": t0,
-                    "label": lab,
-                    "eda_mean": float(np.mean(eda_seg)) if eda_seg.size else float("nan"),
-                    "eda_slope": _eda_slope(eda, eda_fs, t0, t1),
-                    "temp_mean": float(np.mean(temp_seg)) if temp_seg.size else float("nan"),
-                    "acc_mag_std": float(np.std(acc_seg)) if acc_seg.size else float("nan"),
-                    "hr_chest": _hr_in_window(chest_peaks, t0, t1),
-                    "hr_wrist": _hr_in_window(wrist_peaks, t0, t1),
-                    "resp_rate": resp_count * 60.0 / window_s,
-                }
+        i0 = int(np.searchsorted(rel, t0, side="left"))
+        i1 = int(np.searchsorted(rel, t1, side="left"))
+        t0_next = t0 + step_s
+        if i1 > i0:
+            seg_act = activity[i0:i1]
+            label = _window_label(seg_act)
+            nan_too_many = any(
+                np.mean(~np.isfinite(acc[(s, a)][i0:i1])) > MAX_NAN_FRACTION
+                for s in SENSORS
+                for a in AXES
             )
-        t0 += step_s
+            if label != TRANSIENT_LABEL and not nan_too_many:
+                seg_t = rel[i0:i1]
+                row: dict[str, object] = {
+                    "subject_id": subject_id,
+                    "t_start_s": t0,
+                    "label": label,
+                }
+                hr_mean, hr_std = _mean_std(hr[i0:i1])
+                row["hr_mean"] = hr_mean
+                row["hr_std"] = hr_std
+                mags: dict[str, _FloatArray] = {}
+                for s in SENSORS:
+                    xyz = [_interp_nan(seg_t, acc[(s, a)][i0:i1]) for a in AXES]
+                    mags[s] = np.sqrt(xyz[0] ** 2 + xyz[1] ** 2 + xyz[2] ** 2)
+                for s in SENSORS:
+                    mean_s, std_s = _mean_std(mags[s])
+                    row[f"acc_mag_mean_{s}"] = mean_s
+                    row[f"acc_mag_std_{s}"] = std_s
+                rows.append(row)
+        t0 = t0_next
 
     columns = ["subject_id", "t_start_s", "label", *FEATURE_COLUMNS]
     return pd.DataFrame(rows, columns=columns)
-
-
-def cross_sensor_check(
-    hr_chest: np.ndarray,
-    hr_wrist: np.ndarray,
-    tol_bpm: float = 10.0,
-    t_start_s: np.ndarray | None = None,
-    window_s: float = 60.0,
-) -> list[Alert]:
-    """Idea 2: alerta 'sensor_disagreement' cuando |HR_pecho - HR_muneca| > tol_bpm
-    durante al menos 3 ventanas seguidas. Ventanas con NaN cortan la racha.
-
-    t_start_s: inicio de cada ventana en segundos (por defecto 30 s de paso, como extract_windows).
-    """
-    chest = _as_float(hr_chest).ravel()
-    wrist = _as_float(hr_wrist).ravel()
-    if chest.shape != wrist.shape:
-        raise ValueError("hr_chest y hr_wrist deben tener la misma longitud")
-    if tol_bpm < 0:
-        raise ValueError("tol_bpm no puede ser negativo")
-    n = chest.shape[0]
-    starts = np.arange(n, dtype=np.float64) * 30.0 if t_start_s is None else _as_float(t_start_s).ravel()
-    if starts.shape != chest.shape:
-        raise ValueError("t_start_s debe tener la misma longitud que las frecuencias")
-
-    diff = np.abs(chest - wrist)
-    bad = np.isfinite(diff) & (diff > tol_bpm)
-
-    alerts: list[Alert] = []
-    i = 0
-    while i < n:
-        if not bad[i]:
-            i += 1
-            continue
-        j = i
-        while j + 1 < n and bad[j + 1]:
-            j += 1
-        run_len = j - i + 1
-        if run_len >= 3:
-            run_diff = diff[i : j + 1]
-            alerts.append(
-                Alert(
-                    kind="sensor_disagreement",
-                    start_s=float(starts[i]),
-                    end_s=float(starts[j] + window_s),
-                    reasons=[
-                        f"Chest heart rate {chest[i]:.0f} bpm vs wrist {wrist[i]:.0f} bpm "
-                        f"at the start of the run",
-                        f"Chest and wrist heart rate differ by {float(np.mean(run_diff)):.0f} bpm "
-                        f"on average over {run_len} consecutive windows "
-                        f"(tolerance {tol_bpm:.0f} bpm)",
-                    ],
-                )
-            )
-        i = j + 1
-    return alerts

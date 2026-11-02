@@ -5,19 +5,16 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from losti.data_loader import list_wesad_subjects, load_ecg_record, load_wesad_subject
+from losti.data_loader import load_ecg_record
 from losti.privacy import assert_no_raw_signal, export_feature_payload, payload_size_bytes
-from losti.wearable import extract_windows
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "raw"
 SUBJECT = "S2"
 
 
 def _wesad_available() -> bool:
-    try:
-        return SUBJECT in list_wesad_subjects(DATA_DIR)
-    except FileNotFoundError:
-        return False
+    # WESAD fue retirado del proyecto (ver docs/CONTRACT.md); estos tests quedan saltados.
+    return False
 
 
 def _mitdb_available() -> bool:
@@ -26,7 +23,7 @@ def _mitdb_available() -> bool:
 
 needs_wesad = pytest.mark.skipif(
     not _wesad_available(),
-    reason=f"Falta el sujeto {SUBJECT} de WESAD en {DATA_DIR / 'wesad'} (ver scripts/download_data.py)",
+    reason="WESAD retirado del proyecto; test pendiente de adaptar a PAMAP2",
 )
 needs_mitdb = pytest.mark.skipif(
     not _mitdb_available(),

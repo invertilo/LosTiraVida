@@ -1,20 +1,22 @@
 """Descarga y verifica los datasets de LosTiraVida en data/raw/.
 
 - MIT-BIH y NSTDB: se verifican; si faltan, se descargan con wfdb.dl_database.
-- WESAD: se descarga el archivo oficial de UCI (si no esta ya completo), se extrae
-  en data/raw/wesad/S<n>/S<n>.pkl y se verifica que existan los 15 sujetos.
+- DriveDB (PhysioNet): se verifica (drive01..drive16, drive17a, drive17b); si falta, wfdb.dl_database.
+- PAMAP2 (UCI, id 231): se descarga el zip oficial a un directorio temporal (fuera de data/),
+  se extrae el zip interno y se copian Protocol/subject101.dat..subject109.dat a
+  data/raw/pamap2/Protocol/. Se verifican los 9 sujetos.
 
 Uso:
-    python scripts/download_data.py [--data-dir data/raw] [--wesad-zip RUTA.zip]
+    python scripts/download_data.py [--data-dir data/raw] [--pamap2-zip RUTA.zip]
 
---wesad-zip permite usar un zip de WESAD ya descargado a mano (p. ej. si la URL oficial no responde).
+--pamap2-zip permite usar un zip de PAMAP2 ya descargado a mano (p. ej. si la URL no responde).
 Idempotente: lo que ya esta completo no se vuelve a descargar.
 """
 
 from __future__ import annotations
 
 import argparse
-import re
+import shutil
 import sys
 import tempfile
 import zipfile
@@ -23,22 +25,22 @@ from pathlib import Path
 import requests
 import wfdb
 
-WESAD_URL = (
-    "https://archive.ics.uci.edu/static/public/465/"
-    "wesad+wearable+stress+and+affect+detection.zip"
+PAMAP2_URL = (
+    "https://archive.ics.uci.edu/static/public/231/pamap2+physical+activity+monitoring.zip"
 )
-# WESAD tiene 15 sujetos: S2..S17 sin S12.
-WESAD_SUBJECTS: tuple[str, ...] = (
-    "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "S10", "S11",
-    "S13", "S14", "S15", "S16", "S17",
-)
+PAMAP2_INNER_ZIP = "PAMAP2_Dataset.zip"
+PAMAP2_PROTOCOL_DIR = "PAMAP2_Dataset/Protocol/"
+# PAMAP2 tiene 9 sujetos: subject101..subject109 (ids "1".."9").
+PAMAP2_SUBJECT_FILES: tuple[str, ...] = tuple(f"subject{100 + i}.dat" for i in range(1, 10))
 # MIT-BIH tiene 48 registros: 100-124 y 200-234, sin 110, 120, 204, 206, 211, 216, 218, 224-227, 229.
 MITDB_RECORDS: tuple[str, ...] = tuple(
     [str(i) for i in range(100, 125) if i not in (110, 120)]
     + [str(i) for i in range(200, 235) if i not in (204, 206, 211, 216, 218, 224, 225, 226, 227, 229)]
 )
 NSTDB_REQUIRED: tuple[str, ...] = ("em", "ma", "bw")
-_SUBJECT_PKL = re.compile(r"(?:^|/)(S\d+)/\1\.pkl$")
+DRIVEDB_RECORDS: tuple[str, ...] = tuple(
+    [f"drive{i:02d}" for i in range(1, 17)] + ["drive17a", "drive17b"]
+)
 _CHUNK = 1 << 20
 
 
@@ -50,8 +52,13 @@ def _missing_nstdb(nstdb: Path) -> list[str]:
     return [r for r in NSTDB_REQUIRED if not (nstdb / f"{r}.hea").exists()]
 
 
-def _missing_wesad(wesad: Path) -> list[str]:
-    return [s for s in WESAD_SUBJECTS if not (wesad / s / f"{s}.pkl").exists()]
+def _missing_drivedb(drivedb: Path) -> list[str]:
+    return [r for r in DRIVEDB_RECORDS if not all((drivedb / f"{r}.{e}").exists() for e in ("hea", "dat"))]
+
+
+def _missing_pamap2(pamap2: Path) -> list[str]:
+    protocol = pamap2 / "Protocol"
+    return [f for f in PAMAP2_SUBJECT_FILES if not (protocol / f).exists()]
 
 
 def ensure_mitdb(data_dir: Path) -> None:
@@ -82,6 +89,20 @@ def ensure_nstdb(data_dir: Path) -> None:
         raise RuntimeError(f"NSTDB sigue incompleta tras descargar: {still}")
 
 
+def ensure_drivedb(data_dir: Path) -> None:
+    drivedb = data_dir / "drivedb"
+    missing = _missing_drivedb(drivedb)
+    if not missing:
+        print(f"DriveDB completo: {len(DRIVEDB_RECORDS)} registros en {drivedb}")
+        return
+    print(f"DriveDB incompleto (faltan {len(missing)} registros). Descargando con wfdb...")
+    drivedb.mkdir(parents=True, exist_ok=True)
+    wfdb.dl_database("drivedb", dl_dir=str(drivedb))
+    still = _missing_drivedb(drivedb)
+    if still:
+        raise RuntimeError(f"DriveDB sigue incompleto tras descargar: {still}")
+
+
 def _download(url: str, dest: Path) -> None:
     with requests.get(url, stream=True, timeout=60) as resp:
         resp.raise_for_status()
@@ -90,62 +111,67 @@ def _download(url: str, dest: Path) -> None:
                 fh.write(chunk)
 
 
-def _extract_wesad(zip_path: Path, wesad: Path) -> None:
+def _extract_pamap2(zip_path: Path, pamap2: Path, work: Path) -> None:
+    """Extrae Protocol/*.dat del zip oficial de UCI (que contiene un zip interno)."""
     if not zipfile.is_zipfile(zip_path):
-        raise ValueError(f"El archivo no es un zip valido: {zip_path}")
-    with zipfile.ZipFile(zip_path) as zf:
-        members = [
-            (name, hit.group(1))
-            for name in zf.namelist()
-            if (hit := _SUBJECT_PKL.search(name))
-        ]
+        raise ValueError(f"El archivo no es un zip valido (puede ser un puntero de UCI): {zip_path}")
+    with zipfile.ZipFile(zip_path) as outer:
+        if PAMAP2_INNER_ZIP not in outer.namelist():
+            raise ValueError(f"El zip no contiene {PAMAP2_INNER_ZIP}; contenido: {outer.namelist()[:5]}")
+        outer.extract(PAMAP2_INNER_ZIP, path=work)
+    inner_path = work / PAMAP2_INNER_ZIP
+    if not zipfile.is_zipfile(inner_path):
+        raise ValueError("El zip interno de PAMAP2 no es un zip valido")
+    protocol = pamap2 / "Protocol"
+    protocol.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(inner_path) as zf:
+        members = [n for n in zf.namelist() if n.startswith(PAMAP2_PROTOCOL_DIR) and n.endswith(".dat")]
         if not members:
-            raise ValueError(
-                "El zip no contiene archivos SXX/SXX.pkl. Puede ser el puntero de UCI "
-                "(WESAD.txt) en lugar del dataset completo."
-            )
-        for member, subject in members:
-            target = wesad / subject / f"{subject}.pkl"
-            target.parent.mkdir(parents=True, exist_ok=True)
+            raise ValueError("El zip de PAMAP2 no contiene Protocol/*.dat")
+        for member in members:
+            target = protocol / Path(member).name
             with zf.open(member) as src, target.open("wb") as dst:
-                dst.write(src.read())
+                shutil.copyfileobj(src, dst, _CHUNK)
 
 
-def ensure_wesad(data_dir: Path, wesad_zip: Path | None) -> None:
-    wesad = data_dir / "wesad"
-    missing = _missing_wesad(wesad)
+def ensure_pamap2(data_dir: Path, pamap2_zip: Path | None) -> None:
+    pamap2 = data_dir / "pamap2"
+    missing = _missing_pamap2(pamap2)
     if not missing:
-        print(f"WESAD completo: {len(WESAD_SUBJECTS)} sujetos en {wesad}")
+        print(f"PAMAP2 completo: {len(PAMAP2_SUBJECT_FILES)} sujetos en {pamap2 / 'Protocol'}")
         return
-    print(f"WESAD incompleto (faltan {len(missing)} sujetos). Preparando descarga...")
-    if wesad_zip is not None:
-        if not wesad_zip.is_file():
-            raise FileNotFoundError(f"No existe el zip indicado: {wesad_zip}")
-        _extract_wesad(wesad_zip, wesad)
-    else:
-        with tempfile.TemporaryDirectory(prefix="losti_wesad_") as tmp:
-            zip_path = Path(tmp) / "wesad.zip"
-            print(f"Descargando {WESAD_URL}")
-            _download(WESAD_URL, zip_path)
-            _extract_wesad(zip_path, wesad)
-    still = _missing_wesad(wesad)
+    print(f"PAMAP2 incompleto (faltan {len(missing)} sujetos). Preparando descarga...")
+    pamap2.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="losti_pamap2_") as tmp:
+        work = Path(tmp)
+        if pamap2_zip is not None:
+            if not pamap2_zip.is_file():
+                raise FileNotFoundError(f"No existe el zip indicado: {pamap2_zip}")
+            _extract_pamap2(pamap2_zip, pamap2, work)
+        else:
+            zip_path = work / "pamap2.zip"
+            print(f"Descargando {PAMAP2_URL}")
+            _download(PAMAP2_URL, zip_path)
+            _extract_pamap2(zip_path, pamap2, work)
+    still = _missing_pamap2(pamap2)
     if still:
-        raise RuntimeError(f"WESAD incompleto tras extraer, faltan: {still}")
+        raise RuntimeError(f"PAMAP2 incompleto tras extraer, faltan: {still}")
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Descarga y verifica MIT-BIH, NSTDB y WESAD.")
+    parser = argparse.ArgumentParser(description="Descarga y verifica MIT-BIH, NSTDB, DriveDB y PAMAP2.")
     parser.add_argument("--data-dir", type=Path, default=Path("data/raw"))
-    parser.add_argument("--wesad-zip", type=Path, default=None,
-                        help="zip de WESAD ya descargado (opcional)")
+    parser.add_argument("--pamap2-zip", type=Path, default=None,
+                        help="zip oficial de PAMAP2 ya descargado (opcional)")
     args = parser.parse_args(argv)
     data_dir: Path = args.data_dir
     data_dir.mkdir(parents=True, exist_ok=True)
     try:
         ensure_mitdb(data_dir)
         ensure_nstdb(data_dir)
-        ensure_wesad(data_dir, args.wesad_zip)
-    except (requests.RequestException, OSError, ValueError, RuntimeError) as exc:
+        ensure_drivedb(data_dir)
+        ensure_pamap2(data_dir, args.pamap2_zip)
+    except (requests.RequestException, OSError, ValueError, RuntimeError, zipfile.BadZipFile) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
     print("Datasets verificados.")

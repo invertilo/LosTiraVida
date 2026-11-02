@@ -3,86 +3,65 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
 
-from losti.data_loader import list_wesad_subjects, load_wesad_subject
-from losti.types import Alert
-from losti.wearable import FEATURE_COLUMNS, cross_sensor_check, extract_windows
+from losti.data_loader import load_pamap2_subject
+from losti.wearable import FEATURE_COLUMNS, extract_pamap2_windows
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "raw"
-SUBJECT = "S2"
+SUBJECT = "1"
 
 
-def _wesad_available() -> bool:
-    try:
-        return SUBJECT in list_wesad_subjects(DATA_DIR)
-    except FileNotFoundError:
-        return False
+def _pamap2_available() -> bool:
+    return (DATA_DIR / "pamap2" / "Protocol" / "subject101.dat").exists()
 
 
 pytestmark = pytest.mark.skipif(
-    not _wesad_available(),
-    reason=f"Falta el sujeto {SUBJECT} de WESAD en {DATA_DIR / 'wesad'} (ver scripts/download_data.py)",
+    not _pamap2_available(),
+    reason=f"Falta PAMAP2 en {DATA_DIR / 'pamap2'} (ver scripts/download_data.py)",
 )
 
 
 @pytest.fixture(scope="module")
-def windows():
-    subject = load_wesad_subject(SUBJECT, DATA_DIR)
-    return extract_windows(subject, window_s=60.0, step_s=30.0, subject_id=SUBJECT)
+def windows() -> pd.DataFrame:
+    df = load_pamap2_subject(SUBJECT, DATA_DIR)
+    return extract_pamap2_windows(df, SUBJECT)
 
 
-def test_extract_windows_columns_and_labels(windows):
+def test_windows_columns_and_labels(windows: pd.DataFrame):
     assert list(windows.columns) == ["subject_id", "t_start_s", "label", *FEATURE_COLUMNS]
-    assert len(windows) > 0
-    assert set(windows["label"].unique()) <= {1, 2, 3}
+    assert len(windows) > 100
     assert set(windows["subject_id"]) == {SUBJECT}
+    assert (windows["label"] != 0).all()
 
 
-def test_extract_windows_step_spacing(windows):
-    starts = np.sort(windows["t_start_s"].to_numpy())
-    assert np.allclose(np.diff(starts), 30.0)
-
-
-def test_extract_windows_features_are_plausible(windows):
-    hr_chest = windows["hr_chest"].dropna()
-    assert len(hr_chest) > 0.9 * len(windows)
-    assert hr_chest.between(30, 220).all()
-    assert windows["temp_mean"].dropna().between(20, 45).all()
-    assert (windows["resp_rate"].dropna() >= 0).all()
-
-
-def test_extract_windows_requires_subject_id():
-    subject = load_wesad_subject(SUBJECT, DATA_DIR)
-    with pytest.raises(ValueError):
-        extract_windows(subject)
-
-
-def test_cross_sensor_check_matches_run_rule_on_real_features(windows):
-    chest = windows["hr_chest"].to_numpy()
-    wrist = windows["hr_wrist"].to_numpy()
+def test_windows_step_spacing(windows: pd.DataFrame):
+    # Las ventanas caen en la rejilla de 5 s; las descartadas (transitorio) dejan huecos.
     starts = windows["t_start_s"].to_numpy()
-    tol = 0.0
-    alerts = cross_sensor_check(chest, wrist, tol_bpm=tol, t_start_s=starts, window_s=60.0)
+    assert np.allclose(np.mod(starts, 5.0), 0.0)
+    assert np.all(np.diff(np.sort(starts)) >= 5.0 - 1e-9)
 
-    # Recuento independiente de rachas de al menos 3 ventanas con diferencia > tol.
-    diff = np.abs(chest - wrist)
-    bad = np.isfinite(diff) & (diff > tol)
-    expected, i = 0, 0
-    while i < len(bad):
-        if not bad[i]:
-            i += 1
-            continue
-        j = i
-        while j + 1 < len(bad) and bad[j + 1]:
-            j += 1
-        if j - i + 1 >= 3:
-            expected += 1
-        i = j + 1
 
-    assert len(alerts) == expected
-    for alert in alerts:
-        assert isinstance(alert, Alert)
-        assert alert.kind == "sensor_disagreement"
-        assert alert.end_s > alert.start_s
-        assert alert.reasons
+def test_windows_features_are_plausible(windows: pd.DataFrame):
+    acc_cols = [c for c in FEATURE_COLUMNS if c.startswith("acc_mag_mean")]
+    for col in acc_cols:
+        # magnitud del acelerometro en g: en reposo ~1 g, en movimiento algunas unidades
+        assert windows[col].between(0.0, 30.0).all()
+    assert windows[acc_cols].notna().all().all()
+    hr = windows["hr_mean"].dropna()
+    assert len(hr) > 0
+    assert hr.between(30, 220).all()
+
+
+def test_transient_label_is_dropped():
+    df = load_pamap2_subject(SUBJECT, DATA_DIR).iloc[:20000].copy()
+    df.loc[:, "activity_id"] = 0
+    out = extract_pamap2_windows(df, SUBJECT)
+    assert out.empty
+
+
+def test_invalid_window_raises():
+    df = load_pamap2_subject(SUBJECT, DATA_DIR).iloc[:1000]
+    with pytest.raises(ValueError):
+        extract_pamap2_windows(df, SUBJECT, window_s=0.0)

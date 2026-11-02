@@ -6,23 +6,19 @@ import numpy as np
 import pytest
 
 from losti.alerts import explain
-from losti.data_loader import list_wesad_subjects, load_wesad_subject
-from losti.wearable import extract_windows
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "raw"
 SUBJECT = "S2"
 
 
 def _wesad_available() -> bool:
-    try:
-        return SUBJECT in list_wesad_subjects(DATA_DIR)
-    except FileNotFoundError:
-        return False
+    # WESAD fue retirado del proyecto (ver docs/CONTRACT.md); estos tests quedan saltados.
+    return False
 
 
 needs_wesad = pytest.mark.skipif(
     not _wesad_available(),
-    reason=f"Falta el sujeto {SUBJECT} de WESAD en {DATA_DIR / 'wesad'} (ver scripts/download_data.py)",
+    reason="WESAD retirado del proyecto; test pendiente de adaptar a PAMAP2",
 )
 
 

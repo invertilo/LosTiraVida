@@ -135,3 +135,62 @@ def build_html_report(record_id: str, beat_metrics: BeatMetrics, hrv: HRVMetrics
 - `ecg.heart_rate_bpm` devuelve `NaN` si no hay intervalos RR.
 - `validation.noise_robustness`: `f1_with_abstention` es `NaN` si ninguna ventana se acepta.
 - Umbral de aceptación del SQI: 0.5 (constante en `validation.py`).
+
+## Cambio de dataset: WESAD -> PAMAP2 + DriveDB (vigente)
+WESAD queda fuera del proyecto (no está disponible). Motivo: el clasificador necesita etiquetas reales.
+DriveDB no trae calificaciones de estrés en la fuente oficial, así que no se usa para clasificar estrés.
+
+### Datasets
+- **PAMAP2** (UCI id 231, CC BY 4.0). Archivos `Protocol/subjectXXX.dat` dentro de `data/raw/pamap2/`. 9 sujetos. Columnas: timestamp, activityID, heart_rate, y por IMU (hand, chest, ankle): temperature, 3 acelerómetros de 16 g, 3 acelerómetros de 6 g, 3 giroscopios, 3 magnetómetros, 4 orientación. NaN = faltante. Frecuencia 100 Hz (IMU) y ~9 Hz (HR).
+- **DriveDB** (PhysioNet, ODC-By v1.0). `data/raw/drivedb/drive*.hea/.dat`. Señales: ECG (1000 Hz), EMG (1000 Hz), GSR pie y mano (1000 Hz), HR (1 Hz), RESP (500 Hz). Sin anotaciones de estrés.
+
+### `losti/data_loader.py` (agregar; quitar las funciones de WESAD)
+```python
+def list_pamap2_subjects(data_dir: Path) -> list[str]          # ["1", ..., "9"]
+def load_pamap2_subject(subject_id: str, data_dir: Path) -> pd.DataFrame
+    # columnas: timestamp_s, activity_id, heart_rate, hand_acc16_x..z, chest_acc16_x..z, ankle_acc16_x..z (NaN interpolados por ventana, no globalmente)
+def list_drivedb_records(data_dir: Path) -> list[str]          # ["drive01", ..., "drive16", "drive17a", "drive17b"]
+def load_drivedb_record(record_id: str, data_dir: Path) -> dict[str, np.ndarray | float]
+    # claves: "ecg", "emg", "gsr_foot", "gsr_hand", "hr", "resp" (arrays), "fs_fast" (1000.0), "fs_resp" (500.0)
+```
+
+### `losti/wearable.py` (reemplazar el contenido de WESAD)
+```python
+def extract_pamap2_windows(df: pd.DataFrame, subject_id: str, window_s: float = 10.0, step_s: float = 5.0) -> pd.DataFrame
+    # columnas: subject_id, t_start_s, label (activity_id, la mayoritaria), hr_mean, hr_std, acc_mag_mean_hand, acc_mag_mean_chest, acc_mag_mean_ankle, acc_mag_std_hand, acc_mag_std_chest, acc_mag_std_ankle
+    # descarta ventanas con label 0 (transitorio) y ventanas con más de 20% de NaN
+```
+
+### `losti/classifier.py` (generalizar)
+```python
+def train_loso(features: pd.DataFrame, label_col: str = "label") -> tuple[object, pd.DataFrame]
+    # features = todas las columnas numéricas excepto subject_id, t_start_s, label_col
+    # LOSO sobre subject_id. Devuelve (modelo final, DataFrame: subject_id, accuracy, f1_macro, n_windows)
+```
+
+### `losti/drivedb.py` (nuevo, exploratorio, SIN etiquetas)
+```python
+def physiological_profile(record: dict[str, np.ndarray | float], window_s: float = 60.0) -> pd.DataFrame
+    # por ventana de 60 s: hr_mean_bpm, gsr_hand_mean, gsr_foot_mean, resp_rate_bpm, gsr_hand_scl_slope
+def load_index(profile: pd.DataFrame) -> pd.Series
+    # índice de carga fisiológica: z-score por registro de hr y gsr, promediado. NO es una clasificación de estrés.
+```
+
+### Eliminar
+- Todo código de WESAD: `load_wesad_subject`, `list_wesad_subjects`, `extract_windows` antiguo, tests de WESAD, `scripts/download_data.py` (la parte de WESAD).
+- `cross_sensor_check` ya no se usa en la app (PAMAP2 tiene un solo monitor de HR). Se puede quitar del módulo.
+
+### `scripts/download_data.py`
+- Verifica/descarga MIT-BIH, NSTDB y DriveDB (wfdb). PAMAP2 se descarga desde UCI (zip oficial, 656 MB) y se descomprime en `data/raw/pamap2/`. Idempotente.
+
+### App
+- Sección Wearable: resultados de `train_loso` con PAMAP2 (accuracy por sujeto y matriz de confusión).
+- Nueva sub-sección "Physiological load (DriveDB, exploratory)": gráfico del `load_index` por registro, con el aviso de que no hay etiquetas de estrés.
+- About: actualizar fuentes y límites.
+
+### Corrección DriveDB (vigente, reemplaza la de arriba)
+- Las cifras "1000", "10000", "500" del .hea son ganancias, no frecuencias. La frecuencia real es base × muestras por frame, y varía por registro: ECG ~496 Hz (480 en drive17a, 356.5 en drive12), GSR ~31 Hz (30 en drive17a), HR y RESP ~15.5 Hz (31, 15 o 30 en algunos).
+- `load_drivedb_record(record_id, data_dir) -> dict` devuelve: `"ecg"`, `"gsr_foot"`, `"gsr_hand"`, `"hr"`, `"resp"` (np.ndarray o None si la señal no existe), y `"fs_ecg"`, `"fs_gsr"`, `"fs_hr"`, `"fs_resp"` (float, leídos del registro real).
+- Señales faltantes: HR en drive03 y drive14 no existe; GSR de mano en drive02 y drive13 no existe; en drive07 el canal se llama "hand GSr" (mapear a gsr_hand).
+- `physiological_profile(record, window_s=60.0)` recibe el dict tal como lo devuelve `load_drivedb_record`.
+- Valores de HR fuera de [20, 250] bpm se tratan como faltantes. Una ventana es inválida si más del 20% de sus muestras faltan.

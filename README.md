@@ -32,6 +32,10 @@ python3.12 -m venv .venv
 ```
 Los tests usan datos reales. Los que dependen de WESAD se saltan si el dataset no está descargado.
 
+## Desarrolladores
+- [invertilo](https://github.com/invertilo)
+- [alejondr3](https://github.com/alejondr3)
+
 ## Fuentes de datos
 - MIT-BIH Arrhythmia Database — PhysioNet (https://physionet.org/content/mitdb/1.0.0/)
 - MIT-BIH Noise Stress Test Database — PhysioNet (https://physionet.org/content/nstdb/1.0.0/)

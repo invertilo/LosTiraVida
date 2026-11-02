@@ -92,7 +92,7 @@ def overview() -> None:
                      ("Sensitivity", f"{sens:.2%}"), ("Precision", f"{ppv:.2%}"), ("F1", f"{f1:.2%}")],
                     accent_first=False)
         section("Per record")
-        st.dataframe(_fmt(df), hide_index=True, use_container_width=True)
+        st.dataframe(_fmt(df), hide_index=True, width="stretch")
     section("What it does")
     st.markdown(
         '<div class="ltv-pair">'
@@ -134,7 +134,7 @@ def ecg() -> None:
                 fig.add_vrect(x0=a.start_s, x1=a.end_s, fillcolor=col["accent"], opacity=0.15, line_width=0)
         fig.update_xaxes(title_text="Time (s)")
         fig.update_yaxes(title_text="mV")
-        st.plotly_chart(style_figure(fig, 380), use_container_width=True, config={"displaylogo": False})
+        st.plotly_chart(style_figure(fig, 380), width="stretch", config={"displaylogo": False})
 
         section("Heart rate variability")
         metric_grid([("Mean heart rate", f"{hrv.mean_hr_bpm:.0f} bpm"), ("RMSSD", f"{hrv.rmssd_ms:.1f} ms"),
@@ -159,7 +159,7 @@ def validation() -> None:
     lead("Beat detection scored against annotations, and how accuracy holds as real measured noise increases.")
     with guard("Validation"):
         section("All records")
-        st.dataframe(_fmt(_evaluate_all()), hide_index=True, use_container_width=True)
+        st.dataframe(_fmt(_evaluate_all()), hide_index=True, width="stretch")
         section("Noise robustness")
         c1, c2 = st.columns(2)
         with c1:
@@ -177,9 +177,9 @@ def validation() -> None:
                                  line=dict(color=col["accent"], width=2), marker=dict(symbol="circle", size=8)))
         fig.update_xaxes(title_text="SNR (dB)")
         fig.update_yaxes(title_text="F1", range=[0, 1.02])
-        st.plotly_chart(style_figure(fig, 360), use_container_width=True, config={"displaylogo": False})
+        st.plotly_chart(style_figure(fig, 360), width="stretch", config={"displaylogo": False})
         if "kept_fraction" in df:
-            st.dataframe(_fmt(df), hide_index=True, use_container_width=True)
+            st.dataframe(_fmt(df), hide_index=True, width="stretch")
 
 
 # ---------- Wearable ----------
@@ -216,10 +216,10 @@ def wearable() -> None:
             fig = go.Figure(go.Bar(x=res["subject_id"], y=res["accuracy"], marker_color=col["accent"], name="Accuracy"))
             fig.update_yaxes(title_text="Accuracy", range=[0, 1])
             fig.update_xaxes(title_text="Held-out subject")
-            st.plotly_chart(style_figure(fig, 320), use_container_width=True, config={"displaylogo": False})
+            st.plotly_chart(style_figure(fig, 320), width="stretch", config={"displaylogo": False})
             metric_grid([("Mean accuracy", f"{res['accuracy'].mean():.1%}"),
                          ("Mean macro F1", f"{res['f1_macro'].mean():.1%}")])
-            st.dataframe(_fmt(res), hide_index=True, use_container_width=True)
+            st.dataframe(_fmt(res), hide_index=True, width="stretch")
         else:
             note("Training reads every subject file and can take a few minutes. It runs once and is cached.")
         section("Sensor disagreement")

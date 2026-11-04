@@ -1,0 +1,877 @@
+/*
+ * OUTPOST — 8-BIT component styles
+ * Square corners, 3px borders, hard drop-shadows, stepped animations.
+ * No blur, no soft gradients. (The only gradients here are hard-stop patterns:
+ * bar segment gaps, CRT scanlines and the dither scrim.)
+ */
+
+@layer components {
+
+/* Compact help that stays out of the way until the player asks for it. */
+.explain8 {
+  color: var(--px-dim);
+  background: var(--px-navy);
+  border: 2px dashed var(--px-dim);
+}
+.explain8 summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  color: var(--px-cyan);
+  font-family: var(--font-pixel);
+  font-size: 0.55rem;
+  line-height: 1.4;
+  cursor: pointer;
+  list-style: none;
+}
+.explain8 summary::-webkit-details-marker { display: none; }
+.explain8 summary span {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: var(--px-black);
+  background: var(--px-cyan);
+  flex: 0 0 auto;
+}
+.explain8[open] summary { border-bottom: 2px dashed var(--px-dim); }
+.explain8 > div {
+  padding: 9px 10px 10px;
+  font-family: var(--font-terminal);
+  font-size: 1.05rem;
+  line-height: 1.15;
+}
+
+.new-mission-short { display: none; }
+.repair-crew-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.repair-crew-grid .btn8 { min-height: 36px; }
+.crew-role { line-height: 1; min-height: 2em; }
+.resource-trend { line-height: 1; min-height: 2em; }
+
+@media (max-width: 520px) {
+  .dashboard-grid { gap: 12px; padding: 8px; }
+  .dashboard-grid > section[aria-label="Alertas activas"] { padding: 10px; }
+  .mission-topbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px 8px;
+    padding: 6px 8px;
+  }
+  .mission-brand { margin-right: 0; gap: 8px; }
+  .mission-brand svg { width: 30px; height: 30px; }
+  .mission-brand .t-title { font-size: 0.65rem; }
+  .mission-brand .t-small { font-size: 0.95rem; }
+  .mission-actions { grid-column: 2; grid-row: 1; gap: 4px; }
+  .mission-actions .btn8 { min-height: 36px; height: 36px; padding-inline: 8px; }
+  .mission-actions .btn8-icon { width: 36px; }
+  .new-mission-label { display: none; }
+  .new-mission-short { display: inline; }
+  .mission-controls { grid-column: 1 / -1; grid-row: 2; width: 100%; }
+  .controls8 { width: 100%; gap: 6px; }
+  .controls8-play { width: 42px; height: 42px; flex: 0 0 42px; }
+  .controls8-speed { width: auto; flex: 1 1 auto; }
+  .controls8-reset { width: 42px; min-width: 42px; height: 42px; padding: 0; }
+  .controls8-reset-label { display: none; }
+  .active-effects-list { display: grid; grid-template-columns: 1fr; }
+  .active-effects-list li { padding: 7px 9px; line-height: 1.05; }
+  .repair-crew-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .repair-crew-grid .btn8 {
+    width: 100%;
+    min-height: 38px;
+    padding-inline: 6px;
+    font-size: 0.55rem;
+  }
+}
+
+/* ======================================================================
+   Live habitat cutaway: code-native pixel scene, driven by simulation state.
+   ====================================================================== */
+
+.habitat-scene {
+  position: relative;
+  min-height: 290px;
+  padding-top: 62px;
+  background: var(--px-navy);
+  overflow: hidden;
+  padding-bottom: 34px;
+}
+.habitat-sky {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 90px;
+  background: var(--px-black);
+}
+.habitat-horizon {
+  position: absolute;
+  inset: auto 0 0;
+  height: 18px;
+  background: var(--px-red);
+  border-top: 4px solid var(--px-yellow);
+}
+.habitat-scene.is-night .habitat-horizon {
+  background: var(--px-dim);
+  border-color: var(--px-cyan);
+}
+.habitat-star {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: var(--px-white);
+}
+.star-a { left: 8%; top: 18px; }
+.star-b { left: 48%; top: 32px; background: var(--px-cyan); }
+.star-c { right: 12%; top: 14px; background: var(--px-yellow); }
+.habitat-cutaway {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  margin: 0 12px 10px;
+  padding: 6px;
+  background: var(--px-black);
+  border: 4px solid var(--px-white);
+  box-shadow: 8px 8px 0 var(--px-black);
+}
+.habitat-station {
+  position: relative;
+  min-height: 205px;
+  padding: 8px;
+  background: var(--px-navy);
+  border: 3px solid var(--px-dim);
+  overflow: hidden;
+}
+.habitat-station + .habitat-station::before {
+  content: "";
+  position: absolute;
+  left: -7px;
+  bottom: 12px;
+  width: 10px;
+  height: 48px;
+  background: var(--px-black);
+  border-block: 3px solid var(--px-white);
+}
+.habitat-station > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: var(--font-pixel);
+  font-size: 0.55rem;
+  line-height: 1.4;
+}
+.habitat-led {
+  width: 8px;
+  height: 8px;
+  background: var(--px-green);
+  box-shadow: 0 0 0 2px var(--px-black);
+}
+.habitat-station.is-affected {
+  border-color: var(--px-red);
+  box-shadow: inset 0 0 0 2px var(--px-red);
+}
+.habitat-station.is-affected .habitat-led {
+  background: var(--px-red);
+  animation: blink8 0.7s steps(1, end) infinite;
+}
+.habitat-console {
+  display: flex;
+  align-items: end;
+  gap: 4px;
+  width: 72px;
+  height: 34px;
+  margin: 8px 0 4px;
+  padding: 5px;
+  background: var(--px-black);
+  border: 3px solid var(--px-white);
+}
+.habitat-console span {
+  width: 12px;
+  height: 8px;
+  background: var(--px-dim);
+}
+.habitat-console span:first-child { height: 18px; }
+.is-running .habitat-console span:nth-child(2) { animation: console8 0.7s steps(1, end) infinite; }
+.is-running .habitat-console span:nth-child(3) { animation: console8 0.7s steps(1, end) 0.35s infinite; }
+.habitat-crew-row {
+  position: absolute;
+  inset: auto 6px 6px;
+  display: flex;
+  align-items: end;
+  gap: 6px;
+  min-height: 88px;
+}
+.habitat-worker {
+  min-width: 0;
+  flex: 1;
+  text-align: center;
+}
+.habitat-worker-sprite {
+  position: relative;
+  display: inline-block;
+  transform-origin: 50% 100%;
+}
+.is-running .habitat-worker.is-working .habitat-worker-sprite {
+  animation: crew-patrol8 1.4s steps(4, end) infinite;
+}
+.is-running .habitat-worker.is-repairing .habitat-worker-sprite {
+  animation: crew-repair8 0.42s steps(2, end) infinite;
+}
+.is-running .habitat-worker.is-resting .habitat-worker-sprite {
+  animation: crew-rest8 1.6s steps(2, end) infinite;
+}
+.habitat-worker.role-commander .habitat-worker-sprite { animation-delay: -0.25s; }
+.habitat-worker.role-scientist .habitat-worker-sprite { animation-delay: -0.55s; }
+.habitat-worker.role-doctor .habitat-worker-sprite { animation-delay: -0.85s; }
+.habitat-worker-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+  overflow: hidden;
+}
+.habitat-worker-copy strong,
+.habitat-worker-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.habitat-worker-copy strong {
+  color: var(--px-white);
+  font-family: var(--font-pixel);
+  font-size: 0.5rem;
+}
+.habitat-worker-copy span {
+  color: var(--px-dim);
+  font-family: var(--font-terminal);
+  font-size: 0.95rem;
+}
+.habitat-worker.is-repairing .habitat-worker-copy span { color: var(--px-yellow); }
+.repair-sparks {
+  position: absolute;
+  inset: 18px -9px auto auto;
+  width: 20px;
+  height: 24px;
+  color: var(--px-yellow);
+  font-family: var(--font-pixel);
+  font-size: 0.65rem;
+}
+.repair-sparks i { position: absolute; font-style: normal; animation: spark8 0.6s steps(3, end) infinite; }
+.repair-sparks i:nth-child(1) { left: 0; top: 8px; }
+.repair-sparks i:nth-child(2) { right: 0; top: 0; animation-delay: -0.2s; }
+.repair-sparks i:nth-child(3) { right: 2px; bottom: 0; animation-delay: -0.4s; }
+.rest-bubble {
+  position: absolute;
+  right: -4px;
+  top: -4px;
+  color: var(--px-cyan);
+  font-family: var(--font-pixel);
+  font-size: 0.6rem;
+  animation: rest-z8 1.6s steps(4, end) infinite;
+}
+.work-pulse {
+  position: absolute;
+  left: 50%;
+  bottom: -1px;
+  display: flex;
+  gap: 2px;
+  transform: translateX(-50%);
+}
+.work-pulse i {
+  width: 3px;
+  height: 3px;
+  background: var(--px-cyan);
+  animation: work-dot8 0.9s steps(1, end) infinite;
+}
+.work-pulse i:nth-child(2) { animation-delay: -0.3s; }
+.work-pulse i:nth-child(3) { animation-delay: -0.6s; }
+.habitat-legend {
+  position: absolute;
+  inset: auto 12px 8px;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  color: var(--px-dim);
+  font-family: var(--font-pixel);
+  font-size: 0.48rem;
+}
+.habitat-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.habitat-legend i { width: 7px; height: 7px; background: var(--px-green); }
+.habitat-legend .is-alert { background: var(--px-red); }
+.habitat-legend .is-repair { background: var(--px-yellow); }
+@keyframes console8 {
+  0%, 49% { background: var(--px-dim); }
+  50%, 100% { background: var(--px-cyan); }
+}
+@keyframes crew-patrol8 {
+  0% { transform: translate(-5px, 0); }
+  25% { transform: translate(-2px, -2px); }
+  50% { transform: translate(5px, 0); }
+  75% { transform: translate(2px, -2px); }
+  100% { transform: translate(-5px, 0); }
+}
+@keyframes crew-repair8 {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  50% { transform: translate(2px, -2px) rotate(2deg); }
+}
+@keyframes crew-rest8 {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(2px); }
+}
+@keyframes spark8 {
+  0% { opacity: 0; transform: scale(0.5); }
+  50% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: translate(3px, -3px); }
+}
+@keyframes rest-z8 {
+  0% { opacity: 0; transform: translate(0, 4px); }
+  50% { opacity: 1; }
+  100% { opacity: 0; transform: translate(4px, -8px); }
+}
+@keyframes work-dot8 {
+  0%, 33% { opacity: 1; }
+  34%, 100% { opacity: 0.25; }
+}
+@media (max-width: 900px) {
+  .habitat-cutaway { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .habitat-station { min-height: 195px; }
+}
+@media (max-width: 520px) {
+  .habitat-scene { padding-top: 44px; padding-bottom: 38px; }
+  .habitat-cutaway {
+    margin-inline: 5px;
+    padding: 4px;
+    gap: 3px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .habitat-station { min-height: 174px; padding: 6px; }
+  .habitat-station > header { font-size: 0.46rem; }
+  .habitat-console { width: 58px; height: 30px; margin-top: 6px; }
+  .habitat-crew-row { inset: auto 4px 5px; gap: 2px; min-height: 80px; }
+  .habitat-worker-copy strong { font-size: 0.46rem; }
+  .habitat-worker-copy span {
+    white-space: normal;
+    line-height: 0.95;
+    font-size: 0.78rem;
+    max-height: 1.55rem;
+    overflow: hidden;
+  }
+  .habitat-legend { inset-inline: 6px; gap: 7px; font-size: 0.42rem; }
+}
+
+/* ======================================================================
+   Type scale. PIXEL = Press Start 2P (headings, labels, buttons),
+   TERMINAL = VT323 (body copy, which stays readable at length).
+   Sizes sit on the 8px grid so the bitmap font renders without smearing.
+   ====================================================================== */
+
+.t-display {
+  font-family: var(--font-pixel);
+  line-height: 1.25;
+  letter-spacing: 0.04em;
+}
+.t-title {
+  font-family: var(--font-pixel);
+  font-size: 0.75rem; /* 12px */
+  line-height: 1.5;
+  letter-spacing: 0.06em;
+}
+.t-tag {
+  font-family: var(--font-pixel);
+  font-size: 0.625rem; /* 10px: the floor for Press Start 2P */
+  line-height: 1.4;
+  letter-spacing: 0.08em;
+}
+.t-body {
+  font-family: var(--font-terminal);
+  font-size: 1.25rem;
+  line-height: 1.15;
+}
+.t-small {
+  font-family: var(--font-terminal);
+  font-size: 1.125rem; /* 18px VT323: smallest body size used */
+  line-height: 1.15;
+}
+
+/* Stacked hard shadow for big arcade headings. */
+.shadow-text {
+  text-shadow:
+    3px 3px 0 var(--px-red),
+    6px 6px 0 var(--px-black);
+}
+.shadow-text-sm {
+  text-shadow: 2px 2px 0 var(--px-black);
+}
+
+/* ======================================================================
+   Panels: bordered boxes with an inverted title bar.
+   ====================================================================== */
+
+.panel8 {
+  position: relative;
+  background: var(--px-black);
+  border: var(--border-w) solid var(--px-dim);
+  box-shadow: var(--shadow-hard-lg);
+}
+.panel8-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 36px;
+  padding: 6px 12px;
+  background: var(--panel-accent, var(--px-cyan));
+  color: var(--px-black);
+}
+.panel8-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+}
+/* The ■ marker before every panel title. */
+.panel8-head h2::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+/* Inner tiles (crew cards, gauges, facts). */
+.tile8 {
+  position: relative;
+  background: var(--px-navy);
+  border: 2px solid var(--px-dim);
+}
+.tile8-alert {
+  border-color: var(--px-red);
+  box-shadow: inset 0 0 0 2px var(--px-red);
+}
+
+/* Dashed separator, like a text-mode rule. */
+.rule8 {
+  height: 0;
+  border-top: 2px dashed var(--px-dim);
+}
+
+/* ======================================================================
+   Buttons: chunky blocks that physically press into their shadow.
+   SFX: every press is a short square-wave "blip" (~880 Hz, 40 ms).
+   ====================================================================== */
+
+.btn8 {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 14px;
+  font-family: var(--font-pixel);
+  font-size: 0.625rem;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: var(--border-w) solid var(--px-black);
+  box-shadow: var(--shadow-hard);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: none; /* presses are instant: no easing on an 8-bit console */
+}
+.btn8:active:not(:disabled),
+.btn8[data-pressed="true"] {
+  transform: translate(4px, 4px);
+  box-shadow: none;
+}
+.btn8:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  box-shadow: none;
+}
+.btn8-lg {
+  min-height: 56px;
+  padding: 8px 20px;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  white-space: normal; /* long labels wrap on phones instead of clipping */
+  text-align: center;
+}
+.btn8 > svg {
+  flex-shrink: 0;
+}
+
+.btn8-primary {
+  background: var(--px-yellow);
+  color: var(--px-black);
+}
+.btn8-primary:hover:not(:disabled) {
+  background: var(--px-white);
+}
+.btn8-secondary {
+  background: var(--px-navy);
+  color: var(--px-white);
+  border-color: var(--px-white);
+}
+.btn8-secondary:hover:not(:disabled) {
+  background: var(--px-white);
+  color: var(--px-black);
+}
+.btn8-danger {
+  background: var(--px-red);
+  color: var(--px-black);
+}
+.btn8-plain {
+  background: transparent;
+  color: var(--px-dim);
+  border-color: transparent;
+  box-shadow: none;
+}
+.btn8-plain:hover:not(:disabled) {
+  color: var(--px-white);
+  border-color: var(--px-dim);
+}
+.btn8-plain:active:not(:disabled) {
+  transform: translate(2px, 2px);
+}
+
+.btn8-icon {
+  min-height: 0;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+/* Keyboard key cap. */
+.kbd8 {
+  display: inline-block;
+  min-width: 64px;
+  padding: 6px 8px;
+  text-align: center;
+  font-family: var(--font-pixel);
+  font-size: 0.625rem;
+  color: var(--px-black);
+  background: var(--px-white);
+  border: 2px solid var(--px-black);
+  box-shadow: 3px 3px 0 0 var(--px-dim);
+}
+
+/* ======================================================================
+   Tags: solid inverted labels like [ NOMINAL ].
+   ====================================================================== */
+
+.tag8 {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  font-family: var(--font-pixel);
+  font-size: 0.625rem;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  color: var(--px-black);
+  background: var(--tag-color, var(--px-dim));
+}
+.tag8-outline {
+  color: var(--tag-color, var(--px-dim));
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--tag-color, var(--px-dim));
+}
+
+/* ======================================================================
+   Segmented pixel bars. The fill snaps to whole blocks; a hard-stop pattern
+   cuts the gaps between blocks.
+   ====================================================================== */
+
+.bar8 {
+  position: relative;
+  width: 100%;
+  padding: 2px;
+  background: var(--px-black);
+  border: 2px solid var(--px-dim);
+  forced-color-adjust: none;
+}
+.bar8-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+.bar8-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  height: 100%;
+}
+.bar8-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(to right, transparent calc(100% - 2px), var(--px-black) calc(100% - 2px));
+  background-size: calc(100% / var(--seg, 20)) 100%;
+}
+
+/* Blocky slider thumb. */
+.thumb8 {
+  width: 16px;
+  height: 36px;
+  background: var(--px-white);
+  border: 3px solid var(--px-black);
+  box-shadow: 3px 3px 0 0 var(--px-black);
+}
+.thumb8[data-pressed="true"] {
+  background: var(--px-yellow);
+  transform: translateY(2px);
+  box-shadow: 1px 1px 0 0 var(--px-black);
+}
+
+/* ======================================================================
+   Segmented control: a row of switch blocks.
+   ====================================================================== */
+
+.seg8 {
+  display: inline-flex;
+  background: var(--px-black);
+  border: var(--border-w) solid var(--px-dim);
+  padding: 3px;
+  gap: 3px;
+}
+.seg8-opt {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 8px;
+  font-family: var(--font-pixel);
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  color: var(--px-dim);
+  background: transparent;
+  cursor: pointer;
+}
+.seg8-opt:hover {
+  color: var(--px-white);
+  background: var(--px-navy);
+}
+.seg8-opt[aria-checked="true"] {
+  color: var(--px-black);
+  background: var(--px-yellow);
+}
+.seg8-lg .seg8-opt {
+  font-size: 0.75rem;
+}
+
+/* ======================================================================
+   Scrolling (event log): square pixel scrollbar.
+   ====================================================================== */
+
+.scroll8 {
+  scrollbar-width: auto;
+  scrollbar-color: var(--px-dim) var(--px-black);
+}
+.scroll8::-webkit-scrollbar {
+  width: 12px;
+}
+.scroll8::-webkit-scrollbar-track {
+  background: var(--px-black);
+  border-left: 2px solid var(--px-dim);
+}
+.scroll8::-webkit-scrollbar-thumb {
+  background: var(--px-dim);
+  border: 2px solid var(--px-black);
+}
+
+/* ======================================================================
+   Arcade pop-ups: modal dialog + alert toasts.
+   ====================================================================== */
+
+/* 50% ordered-dither scrim instead of a translucent blur. */
+.scrim8 {
+  background-color: transparent;
+  background-image: repeating-conic-gradient(var(--px-black) 0 25%, transparent 0 50%);
+  background-size: 4px 4px;
+}
+
+.dialog8 {
+  background: var(--px-black);
+  border: 4px solid var(--px-white);
+  box-shadow:
+    0 0 0 4px var(--px-black),
+    12px 12px 0 4px var(--px-black);
+}
+
+.toast8 {
+  background: var(--px-black);
+  border: var(--border-w) solid var(--px-red);
+  box-shadow:
+    0 0 0 3px var(--px-black),
+    inset 0 0 0 3px var(--px-black),
+    inset 0 0 0 5px var(--px-red),
+    var(--shadow-hard-lg);
+}
+.toast8-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px 6px 10px;
+  background: var(--px-red);
+  color: var(--px-black);
+}
+
+/* ======================================================================
+   The CRT: dashboard bezel, scanlines, starfield.
+   ====================================================================== */
+
+.crt-frame {
+  position: relative;
+  border: 4px solid var(--px-dim);
+  box-shadow:
+    inset 0 0 0 4px var(--px-black),
+    0 0 0 4px var(--px-black);
+  background: var(--px-navy);
+}
+
+/* Full-screen scanline overlay. Hard 1px/2px stripes, very low contrast. */
+.scanlines {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 2px,
+    rgb(0 0 0 / 0.18) 2px,
+    rgb(0 0 0 / 0.18) 3px
+  );
+}
+
+/* ======================================================================
+   Effects. Every looping effect stops by itself (≤ 5 s, WCAG 2.2.2) and all
+   of them are switched off for prefers-reduced-motion.
+   ====================================================================== */
+
+/* Hard on/off blink. steps(1) = no fade, exactly like a hardware cursor. */
+@keyframes blink8 {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+.blink {
+  animation: blink8 1s steps(1, end) 5;
+}
+.blink-cursor::after {
+  content: "_";
+  margin-left: 2px;
+  animation: blink8 1s steps(1, end) 5;
+}
+
+/* Short "glitch" when a critical event lands. SFX: descending noise burst. */
+@keyframes glitch8 {
+  0% {
+    transform: translate(0, 0);
+  }
+  20% {
+    transform: translate(-4px, 2px);
+    text-shadow: 3px 0 0 var(--px-red), -3px 0 0 var(--px-cyan);
+  }
+  40% {
+    transform: translate(4px, -2px);
+    text-shadow: -3px 0 0 var(--px-red), 3px 0 0 var(--px-cyan);
+  }
+  60% {
+    transform: translate(-2px, 0);
+    text-shadow: 2px 0 0 var(--px-red), -2px 0 0 var(--px-cyan);
+  }
+  80% {
+    transform: translate(2px, 2px);
+  }
+  100% {
+    transform: translate(0, 0);
+    text-shadow: none;
+  }
+}
+.glitch {
+  animation: glitch8 0.32s steps(5, end) 1;
+}
+
+/* Two-frame idle bob for the title lander. */
+@keyframes bob8 {
+  0%,
+  49% {
+    transform: translateY(0);
+  }
+  50%,
+  100% {
+    transform: translateY(-4px);
+  }
+}
+.bob {
+  animation: bob8 1.2s steps(1, end) 4;
+}
+
+/* Rocket flame flicker. */
+@keyframes flicker8 {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0.35;
+  }
+}
+.flicker {
+  animation: flicker8 0.24s steps(1, end) 20;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blink,
+  .blink-cursor::after,
+  .glitch,
+  .bob,
+  .flicker,
+  .habitat-worker-sprite,
+  .repair-sparks i,
+  .rest-bubble,
+  .work-pulse i,
+  .habitat-console span,
+  .habitat-led {
+    animation: none !important;
+  }
+  .btn8:active:not(:disabled) {
+    transform: none;
+  }
+}
+
+/* High contrast: drop the scanlines, brighten every border and dim label. */
+@media (prefers-contrast: more) {
+  :root {
+    --px-dim: var(--px-white);
+  }
+  .scanlines {
+    display: none;
+  }
+}
+
+} /* @layer components */

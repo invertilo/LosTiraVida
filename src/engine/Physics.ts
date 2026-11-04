@@ -11,7 +11,7 @@ import { CREW_MODIFIERS, POWER_SYSTEM, FOOD_PRODUCTION, RADIATION_SHIELDING, LIF
 /** Multipliers produced by active events (1 = unaffected). */
 export interface EffectModifiers {
   solar: number; // dust storm
-  power: number; // equipment failure: power system
+  power: number; // equipment failure: solar array output
   lifeSupport: number; // equipment failure: life support
   food: number; // equipment failure / crop disease (0 = no production)
   shield: number; // equipment failure: active radiation shielding
@@ -152,7 +152,7 @@ export class Physics {
     // Regenerative life support: O2 electrolysis + water recycling scale with Life Support power
     const lifeSupportFraction = (allocation.lifeSupportPower / 100) * m.lifeSupport;
     updated.oxygen += (LIFE_SUPPORT_DATA.oga_max_o2_kg_per_day * lifeSupportFraction) / 24;
-    updated.water += waterConsumed * LIFE_SUPPORT_DATA.wrs_max_water_recovery * Math.min(1, lifeSupportFraction * 2);
+    updated.water += waterConsumed * LIFE_SUPPORT_DATA.wrs_max_water_recovery * Math.min(1, lifeSupportFraction * 2.5);
 
     // Crew eats (NASA: 0.62 kg dry food per person per day)
     updated.food = Math.max(0, updated.food - (crew.length * LIFE_SUPPORT_DATA.food_dry_mass_kg_per_person_per_day) / 24);
@@ -163,8 +163,8 @@ export class Physics {
 
     // Power generation and consumption
     const solarGeneration =
-      (this.calculateSolarPowerGeneration(hourOfDay, dayNightCycle) * m.solar + POWER_SYSTEM.fission_baseload_kw) *
-      m.power;
+      this.calculateSolarPowerGeneration(hourOfDay, dayNightCycle) * m.solar * m.power +
+      POWER_SYSTEM.fission_baseload_kw; // reactor is hardened: only the solar array can be degraded
     const powerConsumption = this.calculatePowerConsumption(crew.length, allocation, isDay);
 
     const netPower = solarGeneration - powerConsumption;
@@ -187,28 +187,28 @@ export class Physics {
     const { resources, crew, radiationExposure } = state;
 
     if (resources.oxygen < 0.1) {
-      return { failed: true, reason: 'Oxygen depleted - crew suffocation', title: 'Oxygen Depleted' };
+      return { failed: true, reason: 'Oxígeno agotado: la tripulación no puede respirar', title: 'Oxígeno agotado' };
     }
 
     if (resources.water < 0.5) {
-      return { failed: true, reason: 'Water depleted - crew dehydration', title: 'Water Depleted' };
+      return { failed: true, reason: 'Agua agotada: deshidratación de la tripulación', title: 'Agua agotada' };
     }
 
     if (resources.food < crew.length * 0.2) {
-      return { failed: true, reason: 'Food depleted - crew starvation', title: 'Food Depleted' };
+      return { failed: true, reason: 'Alimentos agotados: la tripulación no puede sobrevivir', title: 'Alimentos agotados' };
     }
 
     if (resources.power < 0.1 && state.isDay === false) {
-      return { failed: true, reason: 'Battery depleted during night - systems shutdown', title: 'Power Failure' };
+      return { failed: true, reason: 'Batería agotada durante la noche: sistemas apagados', title: 'Fallo de energía' };
     }
 
     if (radiationExposure > this.constants.radiation_limit_mSv_per_year) {
-      return { failed: true, reason: 'Radiation exposure exceeded safe limits', title: 'Radiation Limit Exceeded' };
+      return { failed: true, reason: 'La exposición a radiación superó los límites seguros', title: 'Límite de radiación superado' };
     }
 
     const allCritical = crew.every(c => c.healthStatus === 'critical');
     if (allCritical) {
-      return { failed: true, reason: 'All crew critically ill', title: 'Crew Incapacitated' };
+      return { failed: true, reason: 'Toda la tripulación está en estado crítico', title: 'Tripulación incapacitada' };
     }
 
     return { failed: false, reason: '' };

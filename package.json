@@ -1,17 +1,17 @@
 {
-  "name": "-lostiravida",
+  "name": "lostiravida",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node scripts/dev.mjs",
+    "dev": "vite",
     "build": "vite build",
     "build:analyze": "vite build --outDir dist --emptyOutDir && du -sh dist",
     "lint": "oxlint",
     "preview": "vite preview",
     "type-check": "tsc --noEmit",
-    "test": "bash scripts/run-tests.sh run",
-    "test:watch": "bash scripts/run-tests.sh"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.4",

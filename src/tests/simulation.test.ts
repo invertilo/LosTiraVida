@@ -124,19 +124,19 @@ describe('Failure and success conditions', () => {
   it('O2 = 0 fails the mission', () => {
     const r = moon.checkMissionFailure(base({ oxygen: 0 }));
     expect(r.failed).toBe(true);
-    expect(r.reason).toMatch(/Oxygen/);
+    expect(r.reason).toMatch(/Oxígeno/);
   });
-  it('water = 0 fails the mission', () => expect(moon.checkMissionFailure(base({ water: 0 })).reason).toMatch(/Water/));
-  it('food below 0.2 kg/person fails the mission', () => expect(moon.checkMissionFailure(base({ food: 0.5 })).reason).toMatch(/Food/));
+  it('water = 0 fails the mission', () => expect(moon.checkMissionFailure(base({ water: 0 })).reason).toMatch(/Agua/));
+  it('food below 0.2 kg/person fails the mission', () => expect(moon.checkMissionFailure(base({ food: 0.5 })).reason).toMatch(/Alimentos/));
   it('empty battery at night fails; empty battery by day does not', () => {
     const night = { ...base({ power: 0 }), isDay: false };
-    expect(moon.checkMissionFailure(night).reason).toMatch(/Battery/);
+    expect(moon.checkMissionFailure(night).reason).toMatch(/Batería/);
     expect(moon.checkMissionFailure(base({ power: 0 })).failed).toBe(false);
   });
   it('radiation above limit fails; all-critical crew fails', () => {
-    expect(moon.checkMissionFailure({ ...base(), radiationExposure: 51 }).reason).toMatch(/Radiation/);
+    expect(moon.checkMissionFailure({ ...base(), radiationExposure: 51 }).reason).toMatch(/radiación/);
     const crew = mkCrew().map(c => ({ ...c, healthStatus: 'critical' as const }));
-    expect(moon.checkMissionFailure({ ...base(), crew }).reason).toMatch(/critically/);
+    expect(moon.checkMissionFailure({ ...base(), crew }).reason).toMatch(/crítico/);
   });
   it('success requires 365 Earth days elapsed and enough resources / radiation within limit', () => {
     const s = base({ oxygen: 20, water: 100, food: 100 });
@@ -170,7 +170,7 @@ describe('MissionSimulator initialisation', () => {
   });
   it('crew sizes 1..6 get names; sizes > 6 get fallback names (FIXED)', () => {
     expect(new MissionSimulator('moon', 6).getState().crew.every(c => c.name)).toBe(true);
-    expect(new MissionSimulator('moon', 7).getState().crew[6].name).toBe('Crew 7');
+    expect(new MissionSimulator('moon', 7).getState().crew[6].name).toBe('Tripulante 7');
   });
 });
 
@@ -224,14 +224,14 @@ describe('Edge cases', () => {
     st.resources.oxygen = 1; // ~7 h at 0.14 kg/h
     run(s, 24);
     expect(s.getMissionResult()).toBe(false);
-    expect(s.getEvents().slice(-1)[0]?.description).toMatch(/Oxygen/);
+    expect(s.getEvents().slice(-1)[0]?.description).toMatch(/Oxígeno/);
   });
   it('default settings survive the first night on both bodies (fission baseload + battery)', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.99);
     for (const [loc, hours] of [['moon', 400], ['mars', 60]] as const) {
       const s = new MissionSimulator(loc);
       run(s, hours);
-      expect(s.getEvents().some(e => e.description.includes('Battery'))).toBe(false);
+      expect(s.getEvents().some(e => e.description.includes('Batería'))).toBe(false);
     }
   });
   it('power depletion at night fails the mission (load 10 kW > 6 kW baseload, solar = 0)', () => {
@@ -241,7 +241,7 @@ describe('Edge cases', () => {
       Object.assign(internals(s).state.allocation, { lifeSupportPower: 100, radiationShieldPower: 100, foodProductionPower: 100 });
       run(s, hours);
       expect(s.getMissionResult()).toBe(false);
-      expect(s.getEvents().find(e => e.type === 'failure')?.description).toMatch(/Battery/);
+      expect(s.getEvents().find(e => e.type === 'failure')?.description).toMatch(/Batería/);
     }
   });
   it('minimal allocation (everything 0%) keeps power positive but crew still breaks down (stress) before a year', () => {
@@ -251,15 +251,20 @@ describe('Edge cases', () => {
       s.setResourceAllocation({ lifeSupportPower: 0, radiationShieldPower: 0, foodProductionPower: 0 });
       run(s, 24 * 400);
       expect(s.getMissionResult()).toBe(false);
-      expect(s.getEvents().slice(-1)[0]?.description).not.toMatch(/Battery/);
+      expect(s.getEvents().slice(-1)[0]?.description).not.toMatch(/Batería/);
     }
   });
-  it('default allocation ends in failure before one year on both bodies (BALANCE FINDING)', () => {
+  it('default allocation (30/50/20) wins a quiet year on both bodies; the old 40/30/20 split fails on radiation', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.99);
-    const moon = new MissionSimulator('moon'); run(moon, 24 * 400);
-    expect(moon.getEvents().slice(-1)[0]?.description).toMatch(/Radiation/); // ~253 days in
-    const mars = new MissionSimulator('mars'); run(mars, 24 * 400);
-    expect(mars.getMissionResult()).toBe(false); // crew stress reaches critical
+    for (const loc of ['moon', 'mars'] as const) {
+      const s = new MissionSimulator(loc); run(s, 24 * 400);
+      expect(s.getMissionResult()).toBe(true);
+      const old = new MissionSimulator(loc);
+      old.setResourceAllocation({ lifeSupportPower: 40, radiationShieldPower: 30, foodProductionPower: 20 });
+      run(old, 24 * 400);
+      expect(old.getMissionResult()).toBe(false);
+      expect(old.getEvents().slice(-1)[0]?.description).toMatch(/radiación/);
+    }
   });
   it('radiation exceeds the 50 mSv/yr limit within ~1 year on the Moon at default shielding', () => {
     // ~79 mSv per 8760 h at 60%+6% shielding
@@ -359,15 +364,15 @@ describe('EventSystem', () => {
     resources: { oxygen: 1, water: 1, food: 1, power: 1, co2_stored: 0 }, systems: {} as never, allocation: {} as never,
   });
 
-  it('returns null when the roll is above the location threshold (moon 15%, mars 25%)', () => {
+  it('returns null when the roll is above the location threshold (moon 2.5%, mars 4%)', () => {
     expect(es().generateEvent(state('moon'), () => 0.16)).toBeNull();
     expect(es().generateEvent(state('mars'), () => 0.26)).toBeNull();
   });
-  it('moon event at roll 0.2 on mars but not on moon (Mars has more events)', () => {
-    // first call is chance roll (0.2), second picks pool index 0
+  it('a 3% roll fires on mars but not on moon (Mars has more events)', () => {
+    // first call is chance roll (0.03), second picks pool index 0
     const seq = (v: number[]) => { let i = 0; return () => v[i++ % v.length]; };
-    expect(es().generateEvent(state('moon'), seq([0.2, 0]))).toBeNull();
-    expect(es().generateEvent(state('mars'), seq([0.2, 0]))).not.toBeNull();
+    expect(es().generateEvent(state('moon'), seq([0.03, 0]))).toBeNull();
+    expect(es().generateEvent(state('mars'), seq([0.03, 0]))).not.toBeNull();
   });
   it('produces a well-formed event with timestamp object', () => {
     const e = es().generateEvent(state('mars', 75, 7), () => 0.01)!;
@@ -383,7 +388,7 @@ describe('EventSystem', () => {
     expect(sys.generateEvent(state('mars', 75, 16), r)).not.toBeNull();
   });
   it('low-morale warning fires only below 30 average morale', () => {
-    expect(es().generateMoraleEvent(state('moon', 20), () => 0.05)?.title).toBe('Low Crew Morale');
+    expect(es().generateMoraleEvent(state('moon', 20), () => 0.05)?.title).toBe('Moral baja en la tripulación');
     expect(es().generateMoraleEvent(state('moon', 60), () => 0.5)).toBeNull();
   });
   it('positive morale event is a success event', () => {
@@ -401,11 +406,254 @@ describe('EventSystem', () => {
     crew[0].healthStatus = 'critical';
     expect(es().canRepairSystem(crew, 'engineer')).toBe(false);
   });
-  it('events are descriptive only: they do not alter resources (KNOWN ISSUE)', () => {
+  it('every generated event carries a simulation effect', () => {
+    const e = es().generateEvent(state('mars', 75, 7), () => 0.01)!;
+    expect(e.effect?.kind).toBe('dust_storm');
+  });
+});
+
+describe('Event effects (applied to the simulation)', () => {
+  const fresh = (loc: 'moon' | 'mars' = 'mars') => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99); // no random events
+    return new MissionSimulator(loc);
+  };
+  /** Resource change over `hours` steps, power pinned so the battery never masks differences. */
+  const delta = (s: MissionSimulator, hours: number, key: 'water' | 'food' | 'oxygen') => {
+    const before = s.getResources()[key];
+    for (let i = 0; i < hours; i++) { internals(s).state.resources.power = 20; s.step(); }
+    return s.getResources()[key] - before;
+  };
+
+  it('dust storm cuts solar output by its magnitude and expires after its duration', () => {
+    const mars = new Physics(MARS_PHYSICS);
+    const a = { lifeSupportPower: 0, radiationShieldPower: 0, foodProductionPower: 0, maintenancePersonnel: [] };
+    const r = { oxygen: 100, water: 100, food: 100, power: 0, co2_stored: 0 };
+    // noon on Mars: peak solar, compare with and without a 80% dust storm (battery capped at 20 kWh)
+    const clear = mars.updateResources(r, mkCrew(4), a, true, 6.15, 24.6).power;
+    const dusty = mars.updateResources(r, mkCrew(4), a, true, 6.15, 24.6, { solar: 0.2 }).power;
+    expect(dusty).toBeLessThan(clear);
+    expect(clear - dusty).toBeCloseTo(mars.calculateSolarPowerGeneration(6.15, 24.6) * 0.8, 6);
+
+    const s = fresh();
+    s.applyEventEffect({ kind: 'dust_storm', durationHours: 5, magnitude: 0.8 }, 'Dust');
+    expect(s.getState().activeEffects).toHaveLength(1);
+    expect(s.getState().systems.power).toBe('critical');
+    run(s, 5);
+    expect(s.getState().activeEffects).toHaveLength(0);
+    expect(s.getState().systems.power).toBe('operational');
+    expect(s.getEvents().some(e => e.title.startsWith('Resuelto'))).toBe(true);
+  });
+
+  it('equipment failure degrades exactly one system and a degraded life support recovers less water', () => {
+    const ok = fresh(); const bad = fresh();
+    bad.applyEventEffect({ kind: 'equipment_failure', durationHours: 100, magnitude: 0.4, system: 'lifeSupport' });
+    expect(bad.getState().systems.lifeSupport).not.toBe('operational');
+    expect(bad.getState().systems.power).toBe('operational');
+    expect(delta(bad, 10, 'oxygen')).toBeLessThan(delta(ok, 10, 'oxygen'));
+  });
+
+  it('water leak drains the stated litres per sol (Earth day), then stops', () => {
+    const base = fresh(); const leak = fresh();
+    leak.applyEventEffect({ kind: 'water_leak', durationHours: 48, magnitude: 7.2 });
+    const diff = delta(base, 24, 'water') - delta(leak, 24, 'water');
+    expect(diff).toBeCloseTo(7.2, 6);
+    run(leak, 60);
+    expect(leak.getState().activeEffects).toHaveLength(0);
+  });
+
+  it('radiation spike doubles the dose while active', () => {
+    const base = fresh('moon'); const spike = fresh('moon');
+    spike.applyEventEffect({ kind: 'radiation_spike', durationHours: 8, magnitude: 2 });
+    run(base, 8); run(spike, 8);
+    expect(spike.getState().radiationExposure).toBeCloseTo(base.getState().radiationExposure * 2, 8);
+    const [b0, s0] = [base.getState().radiationExposure, spike.getState().radiationExposure];
+    run(base, 4); run(spike, 4);
+    // after expiry both accumulate at the same rate
+    expect(spike.getState().radiationExposure - s0).toBeCloseTo(base.getState().radiationExposure - b0, 10);
+    expect(spike.getState().activeEffects).toHaveLength(0);
+  });
+
+  it('crop disease zeroes food production until the harvest cycle ends', () => {
+    const base = fresh('moon'); const sick = fresh('moon');
+    const e = sick.applyEventEffect({ kind: 'crop_disease', durationHours: 0, magnitude: 1 });
+    expect(e.remainingHours).toBe(45 * 24); // started at hour 0 of a 45-day cycle
+    expect(delta(sick, 24, 'food')).toBeLessThan(delta(base, 24, 'food'));
+    // production term is exactly zero: food only falls by crew consumption
+    expect(delta(fresh('moon'), 0, 'food')).toBe(0);
+  });
+
+  it('communication loss costs 10 morale while active and gives it back afterwards', () => {
+    const s = fresh();
+    const m0 = s.getState().crew[0].morale;
+    s.applyEventEffect({ kind: 'communication_loss', durationHours: 3, magnitude: 10 });
+    expect(s.getState().crew[0].morale).toBe(m0 - 10);
+    s.step();
+    expect(s.getState().crew[0].morale).toBeLessThan(m0 - 9);
+    run(s, 3);
+    expect(s.getState().activeEffects).toHaveLength(0);
+    expect(s.getState().crew[0].morale).toBeGreaterThan(m0 - 2);
+    expect(s.getState().systems.communications).toBe('operational');
+  });
+
+  it('re-triggering an active effect refreshes it instead of stacking', () => {
+    const s = fresh();
+    s.applyEventEffect({ kind: 'dust_storm', durationHours: 10, magnitude: 0.3 });
+    s.applyEventEffect({ kind: 'dust_storm', durationHours: 20, magnitude: 0.5 });
+    const fx = s.getState().activeEffects;
+    expect(fx).toHaveLength(1);
+    expect(fx[0].remainingHours).toBe(20);
+    expect(fx[0].magnitude).toBe(0.5);
+  });
+
+  it('events produced during a run create active effects automatically', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.01);
     const s = new MissionSimulator('mars');
     s.step();
-    expect(s.getEvents().length).toBeGreaterThan(0);
-    // effects (solarReduction, waterLoss, ...) are declared in the pool but never applied
+    expect(s.getState().activeEffects.length).toBeGreaterThan(0);
+  });
+
+  it('assigned maintenance crew repair equipment faster', () => {
+    const slow = fresh(); const quick = fresh();
+    const spec = { kind: 'equipment_failure' as const, durationHours: 24, magnitude: 0.3, system: 'power' as const };
+    slow.applyEventEffect(spec); quick.applyEventEffect(spec);
+    expect(quick.assignCrew('engineer', 'maintenance')).toBe(true);
+    run(slow, 9); run(quick, 9); // engineer = 1 + 1.5 = 2.5x
+    expect(slow.getState().activeEffects[0].remainingHours).toBe(15);
+    expect(quick.getState().activeEffects[0].remainingHours).toBeCloseTo(24 - 9 * 2.5, 6);
+  });
+});
+
+describe('Allocation and crew assignment validation', () => {
+  const sum = (a: SimulationState['allocation']) => a.lifeSupportPower + a.radiationShieldPower + a.foodProductionPower;
+
+  it('clamps every share to 0-100 and ignores non-finite values', () => {
+    const s = new MissionSimulator('moon');
+    s.setResourceAllocation({ lifeSupportPower: -50, radiationShieldPower: NaN, foodProductionPower: 500 });
+    const a = s.getState().allocation;
+    expect(a.lifeSupportPower).toBe(0);
+    expect(a.foodProductionPower).toBe(100); // 500 clamps to 100, which uses the whole budget
+    expect(a.radiationShieldPower).toBe(0); // NaN ignored (kept 30) then squeezed out by the 100% share
+    expect(sum(a)).toBeLessThanOrEqual(100);
+    for (const v of [a.lifeSupportPower, a.radiationShieldPower, a.foodProductionPower]) {
+      expect(v).toBeGreaterThanOrEqual(0); expect(v).toBeLessThanOrEqual(100);
+    }
+  });
+  it('raising one share reduces the untouched shares first and the total never exceeds 100', () => {
+    const s = new MissionSimulator('moon');
+    s.setResourceAllocation({ radiationShieldPower: 80 }); // others were 40 / 20
+    const a = s.getState().allocation;
+    expect(a.radiationShieldPower).toBe(80);
+    expect(sum(a)).toBe(100);
+    expect(a.lifeSupportPower).toBeGreaterThan(a.foodProductionPower); // proportions kept (2:1)
+  });
+  it('fuzz: any sequence of updates leaves a valid allocation', () => {
+    const s = new MissionSimulator('mars');
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (let i = 0; i < 500; i++) {
+      const pick = () => (rnd() < 0.3 ? undefined : Math.round(rnd() * 300 - 100));
+      s.setResourceAllocation({ lifeSupportPower: pick(), radiationShieldPower: pick(), foodProductionPower: pick() });
+      const a = s.getState().allocation;
+      expect(sum(a)).toBeLessThanOrEqual(100);
+      for (const v of [a.lifeSupportPower, a.radiationShieldPower, a.foodProductionPower]) {
+        expect(Number.isInteger(v)).toBe(true); expect(v).toBeGreaterThanOrEqual(0); expect(v).toBeLessThanOrEqual(100);
+      }
+    }
+  });
+
+  it('assignCrew: only existing, fit crew can be assigned and never more than exist', () => {
+    const s = new MissionSimulator('moon'); // commander, engineer, scientist, doctor
+    expect(s.assignCrew('engineer', 'maintenance')).toBe(true);
+    expect(s.assignCrew('engineer', 'maintenance')).toBe(false); // only one engineer
+    expect(s.assignCrew('botanist', 'maintenance')).toBe(false); // no botanist aboard
+    expect(s.getState().allocation.maintenancePersonnel).toEqual(['engineer']);
+    expect(s.assignCrew('engineer', 'rest')).toBe(true);
+    expect(s.assignCrew('engineer', 'rest')).toBe(false);
+    expect(s.getState().allocation.maintenancePersonnel).toEqual([]);
+  });
+  it('assignCrew: a critical crew member cannot be put on maintenance', () => {
+    const s = new MissionSimulator('moon');
+    internals(s).state.crew.find(c => c.role === 'engineer')!.healthStatus = 'critical';
+    expect(s.assignCrew('engineer', 'maintenance')).toBe(false);
+  });
+  it('maintenancePersonnel passed through setResourceAllocation is validated too', () => {
+    const s = new MissionSimulator('moon');
+    s.setResourceAllocation({ maintenancePersonnel: ['engineer', 'engineer', 'botanist', 'doctor'] });
+    expect(s.getState().allocation.maintenancePersonnel).toEqual(['engineer', 'doctor']);
+  });
+  it('maintenance crew take extra stress only while a repair is under way', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const idle = new MissionSimulator('moon'); const busy = new MissionSimulator('moon');
+    busy.assignCrew('engineer', 'maintenance');
+    busy.applyEventEffect({ kind: 'water_leak', durationHours: 500, magnitude: 5 });
+    idle.applyEventEffect({ kind: 'water_leak', durationHours: 500, magnitude: 5 });
+    run(idle, 20); run(busy, 20);
+    const stress = (x: MissionSimulator) => x.getState().crew.find(c => c.role === 'engineer')!.stress;
+    expect(stress(busy)).toBeGreaterThan(stress(idle));
+  });
+});
+
+describe('Difficulty levels', () => {
+  it('easy starts with more resources than normal, hard with less', () => {
+    const r = (d: 'easy' | 'normal' | 'hard') => new MissionSimulator('moon', 4, d).getResources();
+    expect(r('easy').oxygen).toBeGreaterThan(r('normal').oxygen);
+    expect(r('hard').oxygen).toBeLessThan(r('normal').oxygen);
+    expect(r('easy').power).toBeGreaterThan(r('hard').power);
+    expect(new MissionSimulator('moon', 4).getState().difficulty).toBe('normal');
+  });
+  it('radiation accrues slower on easy and faster on hard', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const dose = (d: 'easy' | 'normal' | 'hard') => { const s = new MissionSimulator('moon', 4, d); run(s, 100, true); return s.getState().radiationExposure; };
+    expect(dose('easy')).toBeLessThan(dose('normal'));
+    expect(dose('normal')).toBeLessThan(dose('hard'));
+  });
+  it('hard has a higher event rate and an unknown difficulty falls back to normal', () => {
+    const st = { location: 'mars', dayNumber: 1, hourOfDay: 0, crew: mkCrew() } as unknown as SimulationState;
+    expect(new EventSystem(1.5).generateEvent(st, () => 0.05)).not.toBeNull(); // 0.05 < 0.04 * 1.5
+    expect(new EventSystem(1).generateEvent(st, () => 0.05)).toBeNull();
+    expect(new MissionSimulator('mars', 4, 'bogus' as never).getState().difficulty).toBe('normal');
+  });
+});
+
+describe('End-of-mission messages', () => {
+  const lastFailure = (s: MissionSimulator) => s.getEvents().filter(e => e.type === 'failure').pop();
+  it('each failure condition reports its own title and reason', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const cases: Array<[string, (st: SimulationState) => void, RegExp]> = [
+      ['Agua agotada', st => { st.resources.water = 0; st.allocation.lifeSupportPower = 0; }, /Agua/],
+      ['Alimentos agotados', st => (st.resources.food = 0.1), /Alimentos/],
+      ['Límite de radiación superado', st => (st.radiationExposure = 60), /radiación/],
+      ['Tripulación incapacitada', st => st.crew.forEach(c => (c.stress = 99)), /crítico/],
+    ];
+    for (const [title, mutate, re] of cases) {
+      const s = new MissionSimulator('moon');
+      mutate(internals(s).state);
+      s.step(); s.step();
+      expect(s.getMissionResult()).toBe(false);
+      expect(lastFailure(s)?.title).toBe(title);
+      expect(lastFailure(s)?.description).toMatch(re);
+    }
+  });
+  it('winning reports radiation and crew in the success message', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const s = new MissionSimulator('mars');
+    const st = internals(s).state;
+    st.dayNumber = Math.ceil(365 * 24 / 24.6);
+    run(s, 40, true);
+    expect(s.getMissionResult()).toBe(true);
+    const win = s.getEvents().find(e => e.type === 'success' && e.title === '¡Misión completa!');
+    expect(win?.description).toMatch(/365 días terrestres/);
+    expect(win?.description).toMatch(/mSv/);
+  });
+  it('surviving the year with empty stores explains the shortfall', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const s = new MissionSimulator('mars');
+    internals(s).state.dayNumber = Math.ceil(365 * 24 / 24.6);
+    internals(s).state.resources.food = 20; // alive (>0.8 kg) but below the 50 kg reserve
+    internals(s).state.resources.water = 9000; internals(s).state.resources.oxygen = 900;
+    run(s, 40);
+    expect(s.getMissionResult()).toBe(false);
+    expect(lastFailure(s)?.title).toBe('Misión incompleta');
+    expect(lastFailure(s)?.description).toMatch(/reserva de comida demasiado baja/);
   });
 });

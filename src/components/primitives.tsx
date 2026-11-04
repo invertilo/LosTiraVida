@@ -1,80 +1,107 @@
-// Shared building blocks: material panels, spring-driven bars and numbers, segmented control, buttons.
+// Shared 8-bit building blocks: bordered panels, segmented pixel bars, odometer numbers,
+// inverted tags, chunky press-down buttons and a block segmented control.
 import {
   forwardRef,
   useEffect,
   useId,
   useRef,
   type ButtonHTMLAttributes,
+  type CSSProperties,
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
-import { motion, useSpring, useTransform, type HTMLMotionProps } from 'motion/react';
-import { gaugeSpring, spring, springSnappy } from '../lib/motion';
-import { cx, toneFill, toneText } from '../lib/ui';
+import { motion, useReducedMotion, useSpring, useTransform } from 'motion/react';
+import { counterSpring, snapBoot } from '../lib/motion';
+import { cx, toneFill } from '../lib/ui';
 import type { Tone } from '../lib/mission';
+import { PlayIcon } from './icons';
 
-/* ---------- Panel (translucent material card) ---------- */
+/* ---------- Compact contextual explanation ---------- */
+
+export function Explain({
+  summary = '¿Qué significa?',
+  children,
+  className,
+}: {
+  summary?: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <details className={cx('explain8', className)}>
+      <summary>
+        <span aria-hidden="true">i</span>
+        {summary}
+      </summary>
+      <div>{children}</div>
+    </details>
+  );
+}
+
+/* ---------- Panel: bordered box with an inverted title bar ---------- */
 
 interface PanelProps {
   title: string;
-  /** Short line under the title. */
+  /** Short line under the title bar. */
   subtitle?: ReactNode;
   accessory?: ReactNode;
   children: ReactNode;
+  /** Title-bar colour (a palette var). */
+  accent?: string;
   className?: string;
   bodyClassName?: string;
-  /** Stagger index for the entrance. */
+  /** Stagger index for the boot-up wipe. */
   index?: number;
 }
 
-export function Panel({ title, subtitle, accessory, children, className, bodyClassName, index = 0 }: PanelProps) {
+export function Panel({ title, subtitle, accessory, children, accent, className, bodyClassName, index = 0 }: PanelProps) {
   const id = useId();
+  const reduceMotion = useReducedMotion();
   return (
     <motion.section
       aria-labelledby={id}
-      className={cx('material rounded-[22px] flex flex-col min-w-0', className)}
-      initial={{ opacity: 0, y: 12, scale: 0.985 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ ...spring, delay: 0.04 * index }}
+      className={cx('panel8 flex flex-col min-w-0', className)}
+      style={{ '--panel-accent': accent } as CSSProperties}
+      // CRT boot: the panel paints top-to-bottom in 6 hard frames. SFX: "bzzt" power-on.
+      // Negative insets at rest so the hard drop-shadow is never clipped.
+      initial={reduceMotion ? false : { clipPath: 'inset(-10% -10% 100% -10%)' }}
+      animate={{ clipPath: 'inset(-10% -10% -10% -10%)' }}
+      transition={{ ...snapBoot, delay: 0.06 * index }}
     >
-      <header className="flex items-start justify-between gap-3 px-5 pt-4 pb-3">
-        <div className="min-w-0">
-          <h2 id={id} className="text-title text-[1.0625rem] text-label">
-            {title}
-          </h2>
-          {subtitle && <p className="text-[0.8125rem] text-label-secondary mt-0.5">{subtitle}</p>}
-        </div>
-        {accessory && <div className="shrink-0">{accessory}</div>}
+      <header className="panel8-head">
+        <h2 id={id} className="t-title truncate min-w-0">
+          {title}
+        </h2>
+        {accessory && <div className="shrink-0 flex items-center">{accessory}</div>}
       </header>
-      <div className={cx('@container px-5 pb-5 min-h-0 flex-1', bodyClassName)}>{children}</div>
+      {subtitle && <p className="t-small text-px-dim px-4 pt-3">{subtitle}</p>}
+      <div className={cx('@container px-4 pt-3 pb-4 min-h-0 flex-1', bodyClassName)}>{children}</div>
     </motion.section>
   );
 }
 
-/* ---------- SpringBar ---------- */
+/* ---------- PixelBar: segmented block meter ---------- */
 
-interface SpringBarProps {
+interface PixelBarProps {
   /** 0–1 */
   value: number;
   color: string;
   label: string;
   valueText?: string;
+  /** Number of blocks. */
+  segments?: number;
+  /** Inner height in px. */
   height?: number;
   className?: string;
 }
 
 /**
- * A progress/meter bar whose fill is driven by a critically-damped spring.
- * The fill is translated (not scaled) inside a clipped track, so rounded ends never distort.
- * Transform-only → runs on the compositor.
+ * Fill snaps to whole blocks (any non-zero value shows at least one block) and jumps
+ * instantly between them, like a hardware LED bar.
  */
-export function SpringBar({ value, color, label, valueText, height = 6, className }: SpringBarProps) {
+export function PixelBar({ value, color, label, valueText, segments = 20, height = 12, className }: PixelBarProps) {
   const clamped = Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
-  const progress = useSpring(clamped, gaugeSpring);
-  useEffect(() => {
-    progress.set(clamped);
-  }, [clamped, progress]);
-  const x = useTransform(progress, (v) => `${(v - 1) * 100}%`);
+  const lit = clamped > 0 ? Math.max(1, Math.round(clamped * segments)) : 0;
 
   return (
     <div
@@ -84,15 +111,18 @@ export function SpringBar({ value, color, label, valueText, height = 6, classNam
       aria-valuemax={100}
       aria-valuenow={Math.round(clamped * 100)}
       aria-valuetext={valueText}
-      className={cx('relative w-full overflow-hidden rounded-full bg-track', className)}
-      style={{ height }}
+      className={cx('bar8', className)}
+      style={{ height: height + 8 }}
     >
-      <motion.div className="absolute inset-0 rounded-full gpu" style={{ x, background: color }} />
+      <div className="bar8-inner">
+        <div className="bar8-fill" style={{ width: `${(lit / segments) * 100}%`, background: color }} />
+        <div className="bar8-grid" style={{ '--seg': segments } as CSSProperties} />
+      </div>
     </div>
   );
 }
 
-/* ---------- AnimatedNumber ---------- */
+/* ---------- AnimatedNumber: odometer-style counter ---------- */
 
 interface AnimatedNumberProps {
   value: number;
@@ -100,9 +130,9 @@ interface AnimatedNumberProps {
   className?: string;
 }
 
-/** Number that springs toward its target. Renders via a MotionValue → no React re-render per frame. */
+/** Ticks toward its target via a stiff spring on a MotionValue: no React re-render per frame. */
 export function AnimatedNumber({ value, format = (v) => Math.round(v).toLocaleString(), className }: AnimatedNumberProps) {
-  const mv = useSpring(value, gaugeSpring);
+  const mv = useSpring(value, counterSpring);
   useEffect(() => {
     mv.set(value);
   }, [value, mv]);
@@ -110,21 +140,24 @@ export function AnimatedNumber({ value, format = (v) => Math.round(v).toLocaleSt
   return <motion.span className={cx('tabular', className)}>{text}</motion.span>;
 }
 
-/* ---------- Pill ---------- */
+/* ---------- Pill: solid inverted tag ---------- */
 
-export function Pill({ tone, children, className }: { tone: Tone; children: ReactNode; className?: string }) {
+export function Pill({
+  tone,
+  children,
+  className,
+  outline,
+}: {
+  tone: Tone;
+  children: ReactNode;
+  className?: string;
+  outline?: boolean;
+}) {
   return (
     <span
-      className={cx(
-        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.75rem] font-semibold leading-none whitespace-nowrap',
-        className,
-      )}
-      style={{
-        color: toneText[tone],
-        background: `color-mix(in srgb, ${toneFill[tone]} 14%, transparent)`,
-      }}
+      className={cx('tag8', outline && 'tag8-outline', tone === 'danger' && 'blink', className)}
+      style={{ '--tag-color': toneFill[tone] } as CSSProperties}
     >
-      <span aria-hidden="true" className="size-1.5 rounded-full" style={{ background: toneFill[tone] }} />
       {children}
     </span>
   );
@@ -132,43 +165,28 @@ export function Pill({ tone, children, className }: { tone: Tone; children: Reac
 
 /* ---------- Buttons ---------- */
 
-type ButtonVariant = 'primary' | 'secondary' | 'plain';
+type ButtonVariant = 'primary' | 'secondary' | 'plain' | 'danger';
 
-interface ButtonProps extends Omit<HTMLMotionProps<'button'>, 'children'> {
+interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: 'md' | 'lg';
   children?: ReactNode;
 }
 
-const variantClass: Record<ButtonVariant, string> = {
-  // Inverted label color: passes contrast in both themes (cyan-500 + white would not).
-  primary: 'bg-label text-canvas active:opacity-85',
-  secondary: 'bg-fill text-label hover:bg-fill-strong active:bg-[var(--fill-pressed)]',
-  plain: 'text-label hover:bg-fill active:bg-fill-strong',
-};
-
-/** Press feedback happens on pointer-down (whileTap + :active), never on release. */
+/** Presses sink into the hard shadow on pointer-down (:active), never on release. */
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   { variant = 'secondary', size = 'md', className, children, type = 'button', ...rest },
   ref,
 ) {
   return (
-    <motion.button
+    <button
       ref={ref}
       type={type}
-      whileTap={{ scale: 0.96 }}
-      transition={springSnappy}
-      className={cx(
-        'inline-flex items-center justify-center gap-2 font-semibold select-none gpu',
-        'disabled:opacity-40 disabled:pointer-events-none',
-        size === 'lg' ? 'h-12 px-6 rounded-[14px] text-[1.0625rem]' : 'h-9 px-3.5 rounded-[10px] text-[0.875rem]',
-        variantClass[variant],
-        className,
-      )}
+      className={cx('btn8', `btn8-${variant}`, size === 'lg' && 'btn8-lg', className)}
       {...rest}
     >
       {children}
-    </motion.button>
+    </button>
   );
 });
 
@@ -176,28 +194,26 @@ export function IconButton({
   label,
   children,
   className,
+  variant = 'secondary',
   ...rest
-}: { label: string; children: ReactNode } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> &
-  Omit<HTMLMotionProps<'button'>, 'children'>) {
+}: { label: string; children: ReactNode; variant?: ButtonVariant } & Omit<
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  'children'
+>) {
   return (
-    <motion.button
+    <button
       type="button"
       aria-label={label}
       title={label}
-      whileTap={{ scale: 0.9 }}
-      transition={springSnappy}
-      className={cx(
-        'inline-flex size-9 items-center justify-center rounded-full text-label bg-fill hover:bg-fill-strong active:bg-[var(--fill-pressed)] gpu',
-        className,
-      )}
+      className={cx('btn8 btn8-icon', `btn8-${variant}`, className)}
       {...rest}
     >
       {children}
-    </motion.button>
+    </button>
   );
 }
 
-/* ---------- SegmentedControl ---------- */
+/* ---------- SegmentedControl: row of switch blocks ---------- */
 
 interface SegmentedOption<T extends string | number> {
   value: T;
@@ -212,12 +228,14 @@ interface SegmentedControlProps<T extends string | number> {
   value: T;
   onChange: (v: T) => void;
   size?: 'sm' | 'md' | 'lg';
+  /** Arcade-style ▶ cursor in front of the selected option. */
+  cursor?: boolean;
   className?: string;
 }
 
 /**
- * radiogroup with roving tabindex; the selection pill slides with a shared-layout spring.
- * Selection commits on pointer-down for instant response.
+ * radiogroup with roving tabindex; selection commits on pointer-down and swaps instantly.
+ * SFX: menu "tick" (short 1 kHz square pulse) on every change.
  */
 export function SegmentedControl<T extends string | number>({
   label,
@@ -225,9 +243,9 @@ export function SegmentedControl<T extends string | number>({
   value,
   onChange,
   size = 'md',
+  cursor,
   className,
 }: SegmentedControlProps<T>) {
-  const groupId = useId();
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
   const selectedIndex = Math.max(
     0,
@@ -246,15 +264,14 @@ export function SegmentedControl<T extends string | number>({
     refs.current[next]?.focus();
   };
 
-  const h = size === 'lg' ? 'h-14' : size === 'sm' ? 'h-8' : 'h-9';
-  const text = size === 'lg' ? 'text-[0.9375rem]' : 'text-[0.8125rem]';
+  const h = size === 'lg' ? 'h-16' : size === 'sm' ? 'h-10' : 'h-11';
 
   return (
     <div
       role="radiogroup"
       aria-label={label}
       onKeyDown={onKeyDown}
-      className={cx('relative inline-flex p-[3px] rounded-[12px] bg-fill', h, className)}
+      className={cx('seg8', size === 'lg' && 'seg8-lg', h, className)}
     >
       {options.map((opt, i) => {
         const selected = i === selectedIndex;
@@ -273,24 +290,12 @@ export function SegmentedControl<T extends string | number>({
               if (e.button === 0) onChange(opt.value);
             }}
             onClick={() => onChange(opt.value)}
-            className={cx(
-              'relative flex-1 min-w-0 px-3 rounded-[9px] font-semibold flex items-center justify-center',
-              text,
-              selected ? 'text-label' : 'text-label-secondary hover:text-label',
-            )}
+            className="seg8-opt"
           >
-            {selected && (
-              <motion.span
-                layoutId={`seg-${groupId}`}
-                transition={spring}
-                className="absolute inset-0 rounded-[9px] gpu"
-                style={{
-                  background: 'var(--material-thick)',
-                  boxShadow: '0 1px 2px rgba(0,0,0,0.12), 0 3px 8px -2px rgba(0,0,0,0.12), inset 0 1px 0 var(--material-edge)',
-                }}
-              />
+            {cursor && (
+              <PlayIcon size={8} className={cx('shrink-0 hidden sm:block', !selected && 'sm:invisible')} />
             )}
-            <span className="relative z-10 truncate">{opt.label}</span>
+            <span className="truncate">{opt.label}</span>
           </button>
         );
       })}

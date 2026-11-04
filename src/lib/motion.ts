@@ -1,28 +1,36 @@
-// Spring presets, expressed the way Apple tunes them: damping ratio (bounce) + response (visualDuration).
-// bounce 0 == damping ratio 1.0 (critically damped). Bounce only where a gesture carried momentum.
+// 8-bit motion presets. Old consoles redrew in whole frames, so motion here moves in
+// discrete steps (a stepped easing) and finishes fast. No soft springs, no overshoot.
 import type { Transition } from 'motion/react';
 
-/** Default UI spring — critically damped, ~0.35 s response. */
-export const spring: Transition = { type: 'spring', bounce: 0, visualDuration: 0.35 };
+/** Stepped easing: t is quantized into `n` equal jumps, landing exactly on 1. */
+export const steps =
+  (n: number) =>
+  (t: number): number =>
+    t >= 1 ? 1 : Math.floor(t * n) / n;
 
-/** Quick feedback (press states, toggles). */
-export const springSnappy: Transition = { type: 'spring', bounce: 0, visualDuration: 0.2 };
+/** Default UI transition: 4 frames over 160 ms. */
+export const snap: Transition = { type: 'tween', duration: 0.16, ease: steps(4) };
 
-/** Sheets and drawers (Apple: damping 0.8, response 0.3). */
-export const springSheet: Transition = { type: 'spring', bounce: 0.15, visualDuration: 0.35 };
+/** Press states, toggles, tag swaps: 2 frames over 80 ms. */
+export const snapFast: Transition = { type: 'tween', duration: 0.08, ease: steps(2) };
 
-/** After a flick / swipe release — slight overshoot is earned by the momentum. */
-export const springMomentum: Transition = { type: 'spring', bounce: 0.2, visualDuration: 0.4 };
+/** Pop-up boxes (dialogs, toasts) scale in over 3 chunky frames. */
+export const snapPop: Transition = { type: 'tween', duration: 0.15, ease: steps(3) };
 
-/** For data-driven values (gauges, counters) that retarget every sim tick. */
-export const gaugeSpring = { bounce: 0, visualDuration: 0.3 } as const;
+/** Page slides in the help screen. */
+export const snapSlide: Transition = { type: 'tween', duration: 0.2, ease: steps(5) };
 
-/** Apple's momentum projection (Designing Fluid Interfaces, WWDC18). */
+/** Panel "CRT boot" wipe on entry. */
+export const snapBoot: Transition = { type: 'tween', duration: 0.3, ease: steps(6) };
+
+/**
+ * Counters retarget on every sim tick, so they keep a spring for smooth
+ * retargeting. It is stiff and critically damped (settles in ~120 ms) and the
+ * numbers are rounded, so they tick over like an odometer.
+ */
+export const counterSpring = { stiffness: 1100, damping: 66, mass: 1 } as const;
+
+/** Apple's momentum projection, kept for the help screen's swipe-to-page. */
 export function project(velocity: number, decelerationRate = 0.998) {
   return ((velocity / 1000) * decelerationRate) / (1 - decelerationRate);
-}
-
-/** Progressive resistance past a boundary. */
-export function rubberband(overshoot: number, dimension: number, constant = 0.55) {
-  return (overshoot * dimension * constant) / (dimension + constant * Math.abs(overshoot));
 }

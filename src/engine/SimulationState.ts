@@ -19,6 +19,7 @@ import {
   LUNAR_ENVIRONMENT,
   MARS_ENVIRONMENT,
   DIFFICULTY_SETTINGS,
+  HABITAT_RADIATION_FACTOR,
   CREW_MODIFIERS,
   FOOD_PRODUCTION,
   POWER_SYSTEM,
@@ -50,7 +51,7 @@ export class MissionSimulator {
     const roles: AstronautRole[] = ['commander', 'engineer', 'scientist', 'doctor'];
     const crew = Array.from({ length: crewCount }, (_, i) => ({
       id: `crew_${i}`,
-      name: ['Alex', 'Jordan', 'Casey', 'Morgan', 'Taylor', 'Riley'][i] ?? `Crew ${i + 1}`,
+      name: ['Alex', 'Jordan', 'Casey', 'Morgan', 'Taylor', 'Riley'][i] ?? `Tripulante ${i + 1}`,
       role: roles[i % roles.length],
       morale: 75,
       stress: 25,
@@ -79,8 +80,10 @@ export class MissionSimulator {
         habitatStructure: 'operational',
       },
       allocation: {
-        lifeSupportPower: 40,
-        radiationShieldPower: 30,
+        // Recommended opening split (see README "Winning strategies"): enough life support to balance O2/water,
+        // heavy shielding to stay under the 50 mSv budget, the rest to hydroponics.
+        lifeSupportPower: 30,
+        radiationShieldPower: 50,
         foodProductionPower: 20,
         maintenancePersonnel: [],
       },
@@ -177,8 +180,8 @@ export class MissionSimulator {
       this.state.eventLog.push({
         timestamp: { day: this.state.dayNumber, hour: this.state.hourOfDay },
         type: 'success',
-        title: `Resolved: ${e.title}`,
-        description: 'The effect has ended and normal operations resume.',
+        title: `Resuelto: ${e.title}`,
+        description: 'El efecto terminó y se reanudan las operaciones normales.',
       });
     }
     this.state.activeEffects = kept;
@@ -240,7 +243,7 @@ export class MissionSimulator {
       this.state.allocation.radiationShieldPower,
       mods
     );
-    this.state.radiationExposure += radiationThisHour * diff.radiationMultiplier;
+    this.state.radiationExposure += radiationThisHour * diff.radiationMultiplier * HABITAT_RADIATION_FACTOR[this.state.location];
 
     // Count down events (after they affected this hour)
     this.tickEffects();
@@ -271,7 +274,7 @@ export class MissionSimulator {
       this.state.eventLog.push({
         timestamp: { day: this.state.dayNumber, hour: this.state.hourOfDay },
         type: 'failure',
-        title: failureCheck.title ?? 'Mission Failed',
+        title: failureCheck.title ?? 'Misión fallida',
         description: failureCheck.reason,
       });
     }
@@ -286,7 +289,7 @@ export class MissionSimulator {
         this.state.eventLog.push({
           timestamp: { day: this.state.dayNumber, hour: this.state.hourOfDay },
           type: 'failure',
-          title: 'Mission Incomplete',
+          title: 'Misión incompleta',
           description: this.shortfallReason(),
         });
         return;
@@ -295,8 +298,8 @@ export class MissionSimulator {
       this.state.eventLog.push({
         timestamp: { day: this.state.dayNumber, hour: this.state.hourOfDay },
         type: 'success',
-        title: 'Mission Complete!',
-        description: `All ${this.state.crew.length} crew survived 365 Earth days with ${this.state.radiationExposure.toFixed(1)} mSv of radiation (limit ${this.physics['constants'].radiation_limit_mSv_per_year} mSv). Mission success!`,
+        title: '¡Misión completa!',
+        description: `Los ${this.state.crew.length} tripulantes sobrevivieron 365 días terrestres con ${this.state.radiationExposure.toFixed(1)} mSv de radiación (límite ${this.physics['constants'].radiation_limit_mSv_per_year} mSv). ¡Misión exitosa!`,
       });
     }
   }
@@ -305,11 +308,11 @@ export class MissionSimulator {
   private shortfallReason(): string {
     const { resources: r, crew } = this.state;
     const parts: string[] = [];
-    if (r.oxygen <= 10) parts.push(`oxygen reserve too low (${r.oxygen.toFixed(0)} kg, need over 10)`);
-    if (r.water <= 50) parts.push(`water reserve too low (${r.water.toFixed(0)} L, need over 50)`);
-    if (r.food <= 50) parts.push(`food reserve too low (${r.food.toFixed(0)} kg, need over 50)`);
-    if (!crew.some(c => c.healthStatus !== 'critical')) parts.push('no crew member was fit at the end');
-    return `The crew survived the year, but the outpost was not left sustainable: ${parts.join('; ') || 'mission goals were not met'}.`;
+    if (r.oxygen <= 10) parts.push(`reserva de oxígeno demasiado baja (${r.oxygen.toFixed(0)} kg; se necesitan más de 10)`);
+    if (r.water <= 50) parts.push(`reserva de agua demasiado baja (${r.water.toFixed(0)} L; se necesitan más de 50)`);
+    if (r.food <= 50) parts.push(`reserva de comida demasiado baja (${r.food.toFixed(0)} kg; se necesitan más de 50)`);
+    if (!crew.some(c => c.healthStatus !== 'critical')) parts.push('ningún tripulante terminó en condiciones');
+    return `La tripulación sobrevivió el año, pero el puesto no quedó sostenible: ${parts.join('; ') || 'no se cumplieron los objetivos'}.`;
   }
 
   private updateCrewStatus(): void {
@@ -338,7 +341,7 @@ export class MissionSimulator {
 
       // Stress from radiation
       if (this.state.radiationExposure > this.physics['constants'].radiation_limit_mSv_per_year * 0.8) {
-        stressChange += 0.1;
+        stressChange += 0.05;
       }
 
       astronaut.stress = Math.max(0, Math.min(100, astronaut.stress + stressChange));

@@ -1,8 +1,8 @@
-// Modal sheet: dim-to-focus scrim, spring entrance, focus trap, Escape to close, focus restore.
+// Arcade pop-up box: dither scrim, 3-frame pop entrance, focus trap, Escape to close, focus restore.
 import { useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
-import { springSheet, springSnappy } from '../lib/motion';
+import { snapFast, snapPop } from '../lib/motion';
 import { cx } from '../lib/ui';
 
 const FOCUSABLE =
@@ -78,15 +78,15 @@ export function Modal({ open, onClose, labelledBy, describedBy, children, classN
       {open && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-6">
           <motion.div
-            className="absolute inset-0"
-            style={{ background: 'var(--scrim)' }}
+            className="absolute inset-0 scrim8"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={springSnappy}
+            transition={snapFast}
             onPointerDown={() => onCloseRef.current?.()}
             aria-hidden="true"
           />
+          {/* SFX: "pop-up" chime, two quick rising square-wave notes */}
           <motion.div
             ref={dialogRef}
             role="dialog"
@@ -95,13 +95,13 @@ export function Modal({ open, onClose, labelledBy, describedBy, children, classN
             aria-describedby={describedBy}
             tabIndex={-1}
             className={cx(
-              'material-thick relative w-full max-w-[560px] max-h-[calc(100dvh-24px)] overflow-hidden rounded-[28px] gpu',
+              'dialog8 relative w-full max-w-[600px] max-h-[calc(100dvh-24px)] overflow-y-auto scroll8',
               className,
             )}
-            initial={{ opacity: 0, y: 28, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 28, scale: 0.96 }}
-            transition={springSheet}
+            initial={{ opacity: 0, scale: 0.6 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.6 }}
+            transition={snapPop}
           >
             {children}
           </motion.div>

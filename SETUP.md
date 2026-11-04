@@ -38,7 +38,7 @@ If you need to install or update Node.js:
 
 ```bash
 git clone <repository-url>
-cd "#LosTiraVida"
+cd LosTiraVida
 ```
 
 ### 3. Install Dependencies
@@ -135,7 +135,7 @@ Configures the Vite build tool:
 - Development server options
 - Code splitting configuration
 
-See `/Users/ice/#LosTiraVida/vite.config.js`
+See `/Users/ice/LosTiraVida/vite.config.js`
 
 ### tailwind.config.js
 
@@ -145,7 +145,7 @@ Tailwind CSS configuration:
 - Spacing scale
 - Custom fonts
 
-See `/Users/ice/#LosTiraVida/tailwind.config.js`
+See `/Users/ice/LosTiraVida/tailwind.config.js`
 
 ### tailwind.css / postcss.config.js
 

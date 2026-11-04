@@ -25,14 +25,14 @@ export function elapsedHours(state: Pick<SimulationState, 'location' | 'dayNumbe
 
 export const elapsedEarthDays = (state: SimulationState) => elapsedHours(state) / 24;
 
-/** "Sol 42" on Mars, "Lunar day 3" on the Moon. */
+/** "Sol 42" en Marte, "Día lunar 3" en la Luna. */
 export function dayLabel(location: LocationType, day: number) {
-  return location === 'mars' ? `Sol ${day}` : `Lunar day ${day}`;
+  return location === 'mars' ? `Sol ${day}` : `Día lunar ${day}`;
 }
 
 /** Local clock. A Mars sol is 24.6 h; a lunar day is 354 h, so the Moon shows "hour N". */
 export function clockLabel(location: LocationType, hour: number) {
-  if (location === 'moon') return `Hour ${Math.floor(hour)}`;
+  if (location === 'moon') return `Hora ${Math.floor(hour)}`;
   const h = Math.floor(hour);
   const m = Math.round((hour - h) * 60);
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
@@ -64,10 +64,10 @@ export function missionStatus(state: SimulationState): MissionStatus {
 
 export const STATUS_COPY: Record<MissionStatus, { label: string; tone: Tone }> = {
   nominal: { label: 'Nominal', tone: 'success' },
-  caution: { label: 'Caution', tone: 'warning' },
-  critical: { label: 'Critical', tone: 'danger' },
-  complete: { label: 'Mission complete', tone: 'success' },
-  failed: { label: 'Mission failed', tone: 'danger' },
+  caution: { label: 'Precaución', tone: 'warning' },
+  critical: { label: 'Crítico', tone: 'danger' },
+  complete: { label: 'Misión completa', tone: 'success' },
+  failed: { label: 'Misión fallida', tone: 'danger' },
 };
 
 export type Tone = 'neutral' | 'info' | 'success' | 'warning' | 'danger';
@@ -100,10 +100,10 @@ export function allocationEffects(location: LocationType, crewCount: number, a: 
 }
 
 export const ROLE_LABEL: Record<string, string> = {
-  commander: 'Commander',
-  engineer: 'Flight Engineer',
-  scientist: 'Science Officer',
-  doctor: 'Flight Surgeon',
-  botanist: 'Botanist',
-  geologist: 'Geologist',
+  commander: 'Comandante',
+  engineer: 'Ingeniería de vuelo',
+  scientist: 'Oficial científico',
+  doctor: 'Médico de vuelo',
+  botanist: 'Botánica',
+  geologist: 'Geología',
 };

@@ -1,20 +1,20 @@
-// Mission timeline, newest first. New entries spring in from the top and push older ones down.
-// Memoized on event count, so layout work happens only when an event actually arrives.
-import { memo } from 'react';
+// Mission log as a text-mode terminal, newest first. New lines "type in" with a hard step.
+// Memoized on event count, so work happens only when an event actually arrives.
+import { memo, type CSSProperties } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { LocationType, SimulationEvent } from '../engine/types';
 import { eventTimeLabel, type Tone } from '../lib/mission';
-import { spring, springSnappy } from '../lib/motion';
+import { snap } from '../lib/motion';
 import { Panel } from './primitives';
 import { toneFill } from '../lib/ui';
 import { CheckCircleIcon, CriticalIcon, FailureIcon, SparkleIcon, WarningIcon } from './icons';
 
-const SEVERITY: Record<SimulationEvent['type'], { tone: Tone; label: string; Icon: typeof WarningIcon }> = {
-  success: { tone: 'success', label: 'Success', Icon: CheckCircleIcon },
-  discovery: { tone: 'info', label: 'Discovery', Icon: SparkleIcon },
-  warning: { tone: 'warning', label: 'Warning', Icon: WarningIcon },
-  critical: { tone: 'danger', label: 'Critical', Icon: CriticalIcon },
-  failure: { tone: 'danger', label: 'Failure', Icon: FailureIcon },
+const SEVERITY: Record<SimulationEvent['type'], { tone: Tone; label: string; code: string; Icon: typeof WarningIcon }> = {
+  success: { tone: 'success', label: 'Éxito', code: 'OK', Icon: CheckCircleIcon },
+  discovery: { tone: 'info', label: 'Descubrimiento', code: 'CIEN', Icon: SparkleIcon },
+  warning: { tone: 'warning', label: 'Alerta', code: 'ALRT', Icon: WarningIcon },
+  critical: { tone: 'danger', label: 'Crítico', code: 'CRIT', Icon: CriticalIcon },
+  failure: { tone: 'danger', label: 'Fallo', code: 'FALL', Icon: FailureIcon },
 };
 
 const MAX_VISIBLE = 60;
@@ -36,63 +36,61 @@ function EventLogImpl({ events, location, index, className }: EventLogProps) {
 
   return (
     <Panel
-      title="Mission Log"
-      subtitle={events.length ? `${events.length} events · ${alerts} critical` : 'Awaiting first transmission'}
+      title="Bitácora de misión"
+      accent="var(--px-white)"
+      subtitle={events.length ? `${events.length} eventos · ${alerts} críticos` : 'Esperando primera transmisión'}
       index={index}
       className={className}
-      bodyClassName="!px-0 !pb-0 flex flex-col"
+      bodyClassName="!px-0 !pb-0 !pt-2 flex flex-col"
     >
       {visible.length === 0 ? (
-        <div className="flex-1 grid place-items-center px-5 pb-8 pt-4 text-center">
+        <div className="flex-1 grid place-items-center px-4 pb-8 pt-4 text-center">
           <div>
-            <span
-              className="mx-auto mb-3 grid place-items-center size-11 rounded-full"
-              style={{ color: toneFill.success, background: `color-mix(in srgb, ${toneFill.success} 14%, transparent)` }}
-            >
-              <CheckCircleIcon size={22} />
+            <span className="mx-auto mb-4 grid place-items-center size-12 bg-px-green text-px-black" aria-hidden="true">
+              <CheckCircleIcon size={32} />
             </span>
-            <p className="text-[0.9375rem] font-semibold text-label">All systems nominal</p>
-            <p className="text-[0.8125rem] text-label-secondary mt-0.5">Events will appear here as the mission unfolds.</p>
+            <p className="t-tag text-px-green">Todos los sistemas nominales</p>
+            <p className="t-small text-px-dim mt-2 blink-cursor">Los eventos aparecerán aquí durante la misión</p>
           </div>
         </div>
       ) : (
         <ol
-          className="scroll-thin scroll-fade flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 pb-4 pt-1 flex flex-col gap-1.5"
-          aria-label="Mission events, newest first"
+          className="scroll8 flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 pb-3 flex flex-col"
+          aria-label="Eventos de misión, más recientes primero"
           tabIndex={0}
         >
           <AnimatePresence initial={false}>
             {visible.map(({ e, key }) => {
               const s = SEVERITY[e.type] ?? SEVERITY.warning;
+              const color = toneFill[s.tone];
               return (
                 <motion.li
                   key={key}
-                  layout="position"
-                  // Siblings slide down first; the new entry materializes into the gap they leave.
-                  initial={{ opacity: 0, scale: 0.94 }}
-                  animate={{ opacity: 1, scale: 1, transition: { ...spring, delay: 0.14 } }}
-                  exit={{ opacity: 0, scale: 0.97 }}
-                  transition={springSnappy}
-                  style={{ transformOrigin: 'top center' }}
-                  className="flex gap-3 rounded-[14px] px-2.5 py-2.5 hover:bg-fill gpu"
+                  initial={{ opacity: 0, x: -12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={snap}
+                  className="flex gap-3 px-1 py-2.5 border-b-2 border-dashed border-px-navy hover:bg-px-navy"
                 >
-                  <span
-                    className="mt-0.5 grid place-items-center size-8 rounded-full shrink-0"
-                    style={{ color: toneFill[s.tone], background: `color-mix(in srgb, ${toneFill[s.tone]} 15%, transparent)` }}
-                  >
-                    <s.Icon size={17} />
+                  <span className="mt-0.5 shrink-0" style={{ color }} aria-hidden="true">
+                    <s.Icon size={16} />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <p className="text-[0.875rem] font-semibold text-label leading-snug">
-                        <span className="sr-only">{s.label}: </span>
-                        {e.title}
-                      </p>
-                      <time className="text-[0.6875rem] text-label-tertiary tabular whitespace-nowrap shrink-0">
-                        {eventTimeLabel(location, e)}
-                      </time>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span
+                        className="tag8"
+                        style={{ '--tag-color': color } as CSSProperties}
+                        aria-hidden="true"
+                      >
+                        {s.code}
+                      </span>
+                      <time className="t-small text-px-dim tabular whitespace-nowrap">{eventTimeLabel(location, e)}</time>
                     </div>
-                    <p className="text-[0.8125rem] text-label-secondary leading-snug mt-0.5">{e.description}</p>
+                    <p className="t-body text-px-white leading-tight mt-1">
+                      <span className="sr-only">{s.label}: </span>
+                      {e.title}
+                    </p>
+                    <p className="t-small text-px-dim leading-tight mt-0.5">{e.description}</p>
                   </div>
                 </motion.li>
               );

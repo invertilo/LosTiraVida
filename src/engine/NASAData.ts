@@ -103,6 +103,11 @@ export const FOOD_PRODUCTION = {
   crop_failure_risk_per_cycle: 0.05, // 5% chance of total loss
 };
 
+// Baseline habitat cover per body, applied on top of the shielding in RADIATION_SHIELDING. Represents the
+// regolith berm over the module (NASA surface-habitat design reference: ~1-2 m of regolith cover). It is also
+// the lever that makes a 50 mSv/yr budget reachable with the game's under-stated dose rates (see notes above).
+export const HABITAT_RADIATION_FACTOR = { moon: 0.7, mars: 0.9 } as const;
+
 // Difficulty presets. Normal = baseline game values.
 //  - resourceMultiplier: scales starting O2 / water / food
 //  - radiationMultiplier: scales the dose actually absorbed (shielding + regolith berms, easier = more cover)
@@ -120,8 +125,8 @@ export const DIFFICULTY_SETTINGS: Record<
   }
 > = {
   easy: {
-    label: 'Easy',
-    description: 'Bigger stockpiles, less radiation, fewer emergencies.',
+    label: 'Fácil',
+    description: 'Más reservas, menos radiación y menos emergencias.',
     resourceMultiplier: 1.5,
     radiationMultiplier: 0.7,
     eventRateMultiplier: 0.6,
@@ -129,17 +134,17 @@ export const DIFFICULTY_SETTINGS: Record<
   },
   normal: {
     label: 'Normal',
-    description: 'The reference scenario.',
+    description: 'El escenario de referencia.',
     resourceMultiplier: 1,
     radiationMultiplier: 1,
     eventRateMultiplier: 1,
     startingPowerFraction: 0.5,
   },
   hard: {
-    label: 'Hard',
-    description: 'Tight stockpiles, stronger radiation, frequent emergencies.',
-    resourceMultiplier: 0.7,
-    radiationMultiplier: 1.2,
+    label: 'Difícil',
+    description: 'Reservas limitadas, más radiación y emergencias frecuentes.',
+    resourceMultiplier: 0.85,
+    radiationMultiplier: 1.15,
     eventRateMultiplier: 1.5,
     startingPowerFraction: 0.35,
   },

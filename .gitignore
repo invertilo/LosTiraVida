@@ -7,47 +7,40 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+# Dependencies and build output
+node_modules/
+dist/
+dist-ssr/
+coverage/
+*.tsbuildinfo
+.vercel/
 *.local
 
 # Environment variables
 .env
-.env.local
-.env.*.local
-.env.production.local
+.env.*
+!.env.example
 
-# Editor directories and files
+# Editors
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
+.idea/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
-*.sw?
-
-# Build artifacts
-coverage
-*.tsbuildinfo
-
-# OS
-Thumbs.db
-.AppleDouble
-.LSOverride
-
-# IDE
-.vscode/
-!.vscode/extensions.json
-.idea/
 *.swp
 *.swo
 *~
 .project
 .pydevproject
 .settings/
+
+# Operating systems
+.DS_Store
+Thumbs.db
+.AppleDouble
+.LSOverride
 
 # Temporary files
 tmp/

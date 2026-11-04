@@ -1,10 +1,10 @@
-// Crew cards: identity, role, health state, and spring-driven morale / stress meters.
+// Crew cards: role badge, health tag, and block meters for morale / stress.
 import { AnimatePresence, motion } from 'motion/react';
 import type { Astronaut, AstronautRole } from '../engine/types';
 import { ROLE_LABEL, type Tone } from '../lib/mission';
-import { spring, springSnappy } from '../lib/motion';
-import { Panel, Pill, SpringBar, AnimatedNumber } from './primitives';
-import { toneFill, cx } from '../lib/ui';
+import { snapFast } from '../lib/motion';
+import { AnimatedNumber, Explain, Panel, Pill, PixelBar } from './primitives';
+import { cx, pad, ROLE_TINT, toneFill } from '../lib/ui';
 import { FlaskIcon, LeafIcon, MedicalIcon, PeopleIcon, RockIcon, StarIcon, WrenchIcon } from './icons';
 
 const ROLE_ICON: Record<AstronautRole, typeof StarIcon> = {
@@ -16,20 +16,17 @@ const ROLE_ICON: Record<AstronautRole, typeof StarIcon> = {
   geologist: RockIcon,
 };
 
-const ROLE_TINT: Record<AstronautRole, string> = {
-  commander: '#6366f1',
-  engineer: '#f97316',
-  scientist: '#06b6d4',
-  doctor: '#ef4444',
-  botanist: '#22c55e',
-  geologist: '#a16207',
-};
-
 const HEALTH: Record<Astronaut['healthStatus'], { label: string; tone: Tone }> = {
-  healthy: { label: 'Healthy', tone: 'success' },
-  fatigued: { label: 'Fatigued', tone: 'warning' },
-  injured: { label: 'Strained', tone: 'warning' },
-  critical: { label: 'Critical', tone: 'danger' },
+  healthy: { label: 'OK', tone: 'success' },
+  fatigued: { label: 'Cans.', tone: 'warning' },
+  injured: { label: 'Lesión', tone: 'warning' },
+  critical: { label: '¡Crít!', tone: 'danger' },
+};
+const HEALTH_SR: Record<Astronaut['healthStatus'], string> = {
+  healthy: 'Saludable',
+  fatigued: 'Fatigado',
+  injured: 'Lesionado',
+  critical: 'Crítico',
 };
 
 function moraleTone(m: number): Tone {
@@ -45,27 +42,18 @@ function CrewCard({ a }: { a: Astronaut }) {
   const critical = a.healthStatus === 'critical';
 
   return (
-    <li className="relative rounded-[16px] bg-fill p-3.5 flex flex-col gap-3 min-w-0">
-      {/* Critical ring: opacity-only so it stays on the compositor */}
-      <motion.span
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 rounded-[16px]"
-        style={{ boxShadow: `inset 0 0 0 1.5px ${toneFill.danger}` }}
-        initial={false}
-        animate={{ opacity: critical ? 1 : 0 }}
-        transition={spring}
-      />
+    <li className={cx('tile8 p-3 flex flex-col gap-3 min-w-0', critical && 'tile8-alert')}>
       <div className="flex items-center gap-2.5 min-w-0">
         <span
-          className="grid place-items-center size-9 rounded-full shrink-0 text-white"
+          className="grid place-items-center size-9 shrink-0 text-px-black border-2 border-px-black"
           style={{ background: ROLE_TINT[a.role] }}
           aria-hidden="true"
         >
-          <Icon size={18} strokeWidth={2} />
+          <Icon size={16} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-[0.9375rem] font-semibold text-label leading-tight truncate">{a.name}</p>
-          <p className="text-[0.75rem] text-label-secondary leading-tight truncate">{ROLE_LABEL[a.role]}</p>
+          <p className="t-tag text-px-white truncate">{a.name}</p>
+          <p className="crew-role t-small text-px-dim">{ROLE_LABEL[a.role]}</p>
         </div>
       </div>
 
@@ -73,34 +61,49 @@ function CrewCard({ a }: { a: Astronaut }) {
         <AnimatePresence mode="popLayout" initial={false}>
           <motion.span
             key={a.healthStatus}
-            initial={{ opacity: 0, y: 6, scale: 0.92 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -6, scale: 0.92 }}
-            transition={springSnappy}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={snapFast}
           >
-            <Pill tone={health.tone}>{health.label}</Pill>
+            <Pill tone={health.tone}>
+              <span aria-hidden="true">{health.label}</span>
+              <span className="sr-only">{HEALTH_SR[a.healthStatus]}</span>
+            </Pill>
           </motion.span>
         </AnimatePresence>
       </div>
 
       <dl className="flex flex-col gap-2">
         <div>
-          <div className="flex justify-between text-[0.75rem] mb-1">
-            <dt className="text-label-secondary">Morale</dt>
-            <dd className="text-label font-semibold">
-              <AnimatedNumber value={a.morale} />
+          <div className="flex justify-between t-small mb-1">
+            <dt className="text-px-dim">Moral</dt>
+            <dd className="text-px-white tabular">
+              <AnimatedNumber value={a.morale} format={(v) => pad(v, 3)} />
             </dd>
           </div>
-          <SpringBar value={a.morale / 100} color={toneFill[moraleTone(a.morale)]} label={`${a.name} morale`} height={5} />
+          <PixelBar
+            value={a.morale / 100}
+            color={toneFill[moraleTone(a.morale)]}
+            label={`Moral de ${a.name}`}
+            segments={10}
+            height={8}
+          />
         </div>
         <div>
-          <div className="flex justify-between text-[0.75rem] mb-1">
-            <dt className="text-label-secondary">Stress</dt>
-            <dd className="text-label font-semibold">
-              <AnimatedNumber value={a.stress} />
+          <div className="flex justify-between t-small mb-1">
+            <dt className="text-px-dim">Estrés</dt>
+            <dd className="text-px-white tabular">
+              <AnimatedNumber value={a.stress} format={(v) => pad(v, 3)} />
             </dd>
           </div>
-          <SpringBar value={a.stress / 100} color={toneFill[stressTone(a.stress)]} label={`${a.name} stress`} height={5} />
+          <PixelBar
+            value={a.stress / 100}
+            color={toneFill[stressTone(a.stress)]}
+            label={`Estrés de ${a.name}`}
+            segments={10}
+            height={8}
+          />
         </div>
       </dl>
     </li>
@@ -112,13 +115,10 @@ export function CrewStatus({ crew, index }: { crew: Astronaut[]; index?: number 
   const healthy = crew.filter((c) => c.healthStatus === 'healthy').length;
   return (
     <Panel
-      title="Crew"
-      subtitle={`${healthy} of ${crew.length} healthy · avg morale ${Math.round(avgMorale)}`}
-      accessory={
-        <span className="grid place-items-center size-8 rounded-full bg-fill text-label-secondary" aria-hidden="true">
-          <PeopleIcon size={18} />
-        </span>
-      }
+      title="Tripulación"
+      accent="var(--px-yellow)"
+      subtitle={`${healthy}/${crew.length} saludables · moral media ${Math.round(avgMorale)}`}
+      accessory={<PeopleIcon size={16} />}
       index={index}
     >
       <ul
@@ -129,6 +129,10 @@ export function CrewStatus({ crew, index }: { crew: Astronaut[]; index?: number 
           <CrewCard key={a.id} a={a} />
         ))}
       </ul>
+      <Explain summary="Moral, estrés y reparaciones" className="mt-3">
+        La moral alta mantiene al equipo eficaz. El estrés aumenta con emergencias y reparaciones, y baja durante el
+        descanso. Si todos llegan a estado crítico, la misión termina.
+      </Explain>
     </Panel>
   );
 }

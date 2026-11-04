@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { MissionSimulator } from '../engine/SimulationState';
-import { SimulationState, LocationType, ResourceAllocation, AstronautRole } from '../engine/types';
+import { SimulationState, LocationType, Difficulty, ResourceAllocation, AstronautRole } from '../engine/types';
 
-export function useSimulation(location: LocationType, crewCount: number = 4) {
+export function useSimulation(location: LocationType, crewCount: number = 4, difficulty: Difficulty = 'normal') {
   const [state, setState] = useState<SimulationState | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [speed, setSpeed] = useState(1); // 1x, 2x, 4x
@@ -10,11 +10,11 @@ export function useSimulation(location: LocationType, crewCount: number = 4) {
 
   // Initialize simulator
   useEffect(() => {
-    const simulator = new MissionSimulator(location, crewCount);
+    const simulator = new MissionSimulator(location, crewCount, difficulty);
     simulatorRef.current = simulator;
     // eslint-disable-next-line react-hooks/exhaustive-deps
     setState(simulator.getState());
-  }, [location, crewCount]);
+  }, [location, crewCount, difficulty]);
 
   // Run simulation loop
   useEffect(() => {
@@ -23,10 +23,9 @@ export function useSimulation(location: LocationType, crewCount: number = 4) {
     const interval = setInterval(() => {
       if (!simulatorRef.current) return;
 
-      // Step simulation multiple times based on speed
-      for (let i = 0; i < speed; i++) {
-        simulatorRef.current.step();
-      }
+      // One simulated hour per tick. Speed changes the cadence instead of batching
+      // several hours into one render, so movement and alerts stay readable.
+      simulatorRef.current.step();
 
       setState(simulatorRef.current.getState());
 
@@ -34,14 +33,14 @@ export function useSimulation(location: LocationType, crewCount: number = 4) {
       if (!simulatorRef.current.isMissionRunning()) {
         setIsRunning(false);
       }
-    }, 100); // Update every 100ms = 1 hour per 100ms in real-time at 1x speed
+    }, 1000 / speed); // 1X = one simulated hour per real second
 
     return () => clearInterval(interval);
   }, [isRunning, speed]);
 
   const toggleRunning = useCallback(() => {
-    setIsRunning(!isRunning);
-  }, [isRunning]);
+    setIsRunning((running) => !running);
+  }, []);
 
   const setAllocation = useCallback((allocation: Partial<ResourceAllocation>) => {
     if (simulatorRef.current) {
@@ -59,10 +58,10 @@ export function useSimulation(location: LocationType, crewCount: number = 4) {
 
   const restart = useCallback(() => {
     setIsRunning(false);
-    const simulator = new MissionSimulator(location, crewCount);
+    const simulator = new MissionSimulator(location, crewCount, difficulty);
     simulatorRef.current = simulator;
     setState(simulator.getState());
-  }, [location, crewCount]);
+  }, [location, crewCount, difficulty]);
 
   return {
     state,

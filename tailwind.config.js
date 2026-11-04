@@ -1,43 +1,30 @@
-/** @type {import('tailwindcss').Config} */
+/**
+ * Tailwind v4 reads its theme from CSS (`@theme` in src/index.css); this file is not loaded
+ * unless referenced with `@config`. It mirrors the 8-bit palette and fonts for editor tooling.
+ * @type {import('tailwindcss').Config}
+ */
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
       colors: {
-        neutral: {
-          50: '#fafafa',
-          100: '#f5f5f5',
-          200: '#e5e5e5',
-          300: '#d4d4d4',
-          400: '#a3a3a3',
-          500: '#737373',
-          600: '#525252',
-          700: '#404040',
-          800: '#262626',
-          900: '#171717',
+        px: {
+          black: '#000000',
+          navy: '#1b1464',
+          dim: '#9a9aff',
+          white: '#ffffff',
+          cyan: '#33e6ff',
+          green: '#4dff6a',
+          yellow: '#ffe033',
+          red: '#ff5470',
         },
       },
       fontFamily: {
-        sans: ['-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', '"Helvetica Neue"', 'Arial', 'sans-serif'],
+        pixel: ['"Press Start 2P"', 'ui-monospace', 'monospace'],
+        terminal: ['VT323', 'ui-monospace', 'monospace'],
+        sans: ['VT323', 'ui-monospace', 'monospace'],
       },
-      fontSize: {
-        xs: ['12px', { lineHeight: '16px' }],
-        sm: ['13px', { lineHeight: '19px' }],
-        base: ['16px', { lineHeight: '24px' }],
-        lg: ['18px', { lineHeight: '28px' }],
-        xl: ['20px', { lineHeight: '28px' }],
-        '2xl': ['24px', { lineHeight: '32px' }],
-        '3xl': ['32px', { lineHeight: '40px' }],
-      },
-      spacing: {
-        xs: '4px',
-        sm: '8px',
-        md: '12px',
-        lg: '16px',
-        xl: '24px',
-        '2xl': '32px',
-        '3xl': '48px',
-      },
+      borderRadius: { none: '0' },
     },
   },
   plugins: [],

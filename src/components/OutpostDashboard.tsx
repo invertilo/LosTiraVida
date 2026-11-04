@@ -1,12 +1,12 @@
-// Main simulator view.
+// Main simulator view, framed like a CRT monitor.
 //  ┌ Mission stats ───────────┐┌ Crew ─────────────┐
 //  ├ Resources │ Allocation ──┤├ Mission log ──────┤
-// Translucent chrome on top; panels collapse to 2 columns on tablet, 1 on phone.
+// Status bar on top; panels collapse to 2 columns on tablet, 1 on phone.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import type { LocationType, SimulationEvent } from '../engine/types';
+import type { Difficulty, LocationType, SimulationEvent } from '../engine/types';
 import { useSimulation } from '../hooks/useSimulation';
-import { springSheet, springSnappy } from '../lib/motion';
+import { snapFast, snapPop } from '../lib/motion';
 import { Backdrop } from './Backdrop';
 import { Controls } from './Controls';
 import { MissionStats } from './MissionStats';
@@ -14,21 +14,25 @@ import { CrewStatus } from './CrewStatus';
 import { ResourceGauges } from './ResourceGauges';
 import { AllocationPanel } from './AllocationPanel';
 import { EventLog } from './EventLog';
+import { ActiveEffects } from './ActiveEffects';
+import { HabitatScene } from './HabitatScene';
 import { MissionResult } from './MissionResult';
+import { Planet } from './sprites';
 import { Button, IconButton } from './primitives';
-import { cx, toneFill, SPEEDS } from '../lib/ui';
-import { CheckCircleIcon, CloseIcon, CriticalIcon, FailureIcon, QuestionIcon, SparkleIcon } from './icons';
+import { cx, SPEEDS } from '../lib/ui';
+import { CloseIcon, CriticalIcon, FailureIcon, QuestionIcon } from './icons';
 
 interface OutpostDashboardProps {
   location: LocationType;
   crewCount: number;
+  difficulty?: Difficulty;
   onExit: () => void;
   onOpenTutorial: () => void;
   tutorialOpen: boolean;
 }
 
 type Toast = { id: number; event: SimulationEvent };
-// Only interruptions worth an interruption get a toast; everything else lives in the log.
+// Only interruptions worth an interruption get a pop-up; everything else lives in the log.
 const TOAST_TYPES = new Set<SimulationEvent['type']>(['critical', 'failure']);
 
 function isTypingTarget(t: EventTarget | null) {
@@ -37,12 +41,13 @@ function isTypingTarget(t: EventTarget | null) {
   return !!el.closest('input, textarea, select, [contenteditable="true"]');
 }
 
-export function OutpostDashboard({ location, crewCount, onExit, onOpenTutorial, tutorialOpen }: OutpostDashboardProps) {
-  const { state, isRunning, toggleRunning, speed, setSpeed, setAllocation, restart } = useSimulation(location, crewCount);
+export function OutpostDashboard({ location, crewCount, difficulty = 'normal', onExit, onOpenTutorial, tutorialOpen }: OutpostDashboardProps) {
+  const { state, isRunning, toggleRunning, speed, setSpeed, setAllocation, assignCrew, restart } = useSimulation(location, crewCount, difficulty);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [resultOpen, setResultOpen] = useState(false);
   const [restartRequest, setRestartRequest] = useState(0);
   const [announcement, setAnnouncement] = useState('');
+  const [glitch, setGlitch] = useState(false);
   const seenEvents = useRef(0);
 
   const ended = state?.missionSuccess !== null && state?.missionSuccess !== undefined;
@@ -53,7 +58,7 @@ export function OutpostDashboard({ location, crewCount, onExit, onOpenTutorial, 
     if (tutorialOpen && isRunning) toggleRunning();
   }, [tutorialOpen, isRunning, toggleRunning]);
 
-  // New events → toast + screen reader announcement.
+  // New events → pop-up + screen glitch + screen reader announcement.
   const eventCount = state?.eventLog.length ?? 0;
   useEffect(() => {
     if (!state) return;
@@ -68,23 +73,31 @@ export function OutpostDashboard({ location, crewCount, onExit, onOpenTutorial, 
     setToasts((prev) =>
       [...notable.map((event, i) => ({ id: Date.now() + i + Math.random(), event })).reverse(), ...prev].slice(0, 3),
     );
+    setGlitch(true); // SFX: alarm klaxon, 2 × alternating 440/660 Hz square waves
     const latest = notable[notable.length - 1];
     setAnnouncement(`${latest.title}. ${latest.description}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventCount]);
 
-  // Auto-dismiss toasts.
+  // The glitch is a one-shot class (CSS animation, 320 ms); clear it so the next alert can replay it.
+  useEffect(() => {
+    if (!glitch) return;
+    const t = setTimeout(() => setGlitch(false), 360);
+    return () => clearTimeout(t);
+  }, [glitch]);
+
+  // Auto-dismiss pop-ups.
   useEffect(() => {
     if (!toasts.length) return;
     const t = setTimeout(() => setToasts((prev) => prev.slice(0, -1)), 5200);
     return () => clearTimeout(t);
   }, [toasts]);
 
-  // Open the result sheet when the mission ends.
+  // Show the game-over screen when the mission ends.
   useEffect(() => {
     if (ended) {
       const t = setTimeout(() => {
-        setToasts([]); // the result sheet tells the story now
+        setToasts([]); // the result screen tells the story now
         setResultOpen(true);
       }, 450);
       return () => clearTimeout(t);
@@ -124,41 +137,35 @@ export function OutpostDashboard({ location, crewCount, onExit, onOpenTutorial, 
 
   return (
     <div className="relative min-h-dvh">
-      <Backdrop location={location} isDay={state.isDay} />
+      <Backdrop />
       <a
         href="#dashboard"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-[10px] focus:bg-label focus:px-3 focus:py-2 focus:text-canvas"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 btn8 btn8-primary"
       >
-        Skip to dashboard
+        Saltar al panel
       </a>
 
-      {/* Toolbar: translucent chrome, content scrolls beneath */}
-      <header className="material-chrome sticky top-0 z-30" style={{ boxShadow: '0 1px 0 var(--separator)' }}>
-        <div className="mx-auto max-w-[1440px] px-4 sm:px-6 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
-          <div className="flex items-center gap-2.5 min-w-0 mr-auto">
-            <span
-              className="grid place-items-center size-8 rounded-[10px] text-white text-[0.875rem] font-bold shrink-0"
-              style={{
-                background:
-                  location === 'mars'
-                    ? 'linear-gradient(140deg, #f97316, #b91c1c)'
-                    : 'linear-gradient(140deg, #d6d3d1, #57534e)',
-              }}
-              aria-hidden="true"
-            >
-              {location === 'mars' ? 'M' : 'L'}
-            </span>
-            <div className="min-w-0 leading-tight">
-              <h1 className="text-title text-[1rem] text-label truncate">
-                {location === 'mars' ? 'Mars' : 'Lunar'} Outpost
-              </h1>
-              <p className="text-[0.75rem] text-label-secondary truncate">
-                {crewCount} crew · {isRunning ? `Running at ${speed}×` : ended ? 'Mission ended' : 'Paused'}
+      {/* Status bar */}
+      <header className="sticky top-0 z-30 bg-px-black border-b-4 border-px-dim">
+        <div className="mission-topbar mx-auto max-w-[1440px] px-4 sm:px-6 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2.5">
+          <div className="mission-brand flex items-center gap-3 min-w-0 mr-auto">
+            <Planet location={location} scale={3} />
+            <div className="min-w-0">
+              <h1 className="t-title text-px-yellow truncate">Puesto {location === 'mars' ? 'Marte' : 'Lunar'}</h1>
+              <p className="t-small text-px-dim truncate">
+                {crewCount} tripulantes ·{' '}
+                {isRunning ? (
+                  <span className="text-px-green">En marcha {speed}X</span>
+                ) : ended ? (
+                  'Misión terminada'
+                ) : (
+                  <span className="text-px-yellow">En pausa</span>
+                )}
               </p>
             </div>
           </div>
 
-          <div className="order-3 w-full sm:order-none sm:w-auto flex justify-center">
+          <div className="mission-controls order-3 w-full sm:order-none sm:w-auto flex justify-center">
             <Controls
               isRunning={isRunning}
               onToggle={toggleRunning}
@@ -171,20 +178,21 @@ export function OutpostDashboard({ location, crewCount, onExit, onOpenTutorial, 
             />
           </div>
 
-          <div className="flex items-center gap-2 sm:ml-auto">
-            <IconButton label="How to play (?)" onClick={onOpenTutorial} aria-keyshortcuts="Shift+/">
-              <QuestionIcon size={18} />
+          <div className="mission-actions flex items-center gap-3 sm:ml-auto">
+            <IconButton label="Cómo jugar (?)" onClick={onOpenTutorial} aria-keyshortcuts="Shift+/">
+              <QuestionIcon size={16} />
             </IconButton>
-            <Button variant="secondary" onClick={onExit}>
-              New mission
+            <Button variant="secondary" onClick={onExit} aria-label="Nueva misión">
+              <span className="new-mission-label">Nueva misión</span>
+              <span className="new-mission-short" aria-hidden="true">Nueva</span>
             </Button>
           </div>
         </div>
       </header>
 
-      {/* Notifications */}
+      {/* Arcade alert pop-ups */}
       <div
-        className="pointer-events-none fixed inset-x-0 top-[112px] sm:top-[68px] z-40 flex flex-col items-center sm:items-end gap-2 px-4 sm:px-6"
+        className="pointer-events-none fixed inset-x-0 top-[136px] sm:top-[84px] z-40 flex flex-col items-center sm:items-end gap-3 px-4 sm:px-6"
         aria-hidden="true"
       >
         <AnimatePresence initial={false}>
@@ -197,36 +205,42 @@ export function OutpostDashboard({ location, crewCount, onExit, onOpenTutorial, 
         {announcement}
       </div>
 
-      <main
-        id="dashboard"
-        tabIndex={-1}
-        className="mx-auto max-w-[1440px] px-4 sm:px-6 py-4 sm:py-6 grid gap-4 md:grid-cols-2 lg:grid-cols-12 outline-none"
-      >
+      <div className="mx-auto max-w-[1440px] p-2 sm:p-4">
+        <main
+          id="dashboard"
+          tabIndex={-1}
+          className={cx('dashboard-grid crt-frame p-3 sm:p-5 grid gap-5 md:grid-cols-2 lg:grid-cols-12 outline-none', glitch && 'glitch')}
+        >
+          <ActiveEffects state={state} onAssignCrew={assignCrew} disabled={ended} />
+          <div className="md:col-span-2 lg:col-span-12 min-w-0">
+            <HabitatScene state={state} isRunning={isRunning} index={0} />
+          </div>
         {/* Top-left */}
-        <div className="md:col-span-2 lg:col-span-7 min-w-0 [&>section]:h-full">
-          <MissionStats state={state} index={0} />
-        </div>
-        {/* Top-right */}
-        <div className="md:col-span-2 lg:col-span-5 min-w-0 [&>section]:h-full">
-          <CrewStatus crew={state.crew} index={1} />
-        </div>
-        {/* Bottom-left */}
-        <div className="md:col-span-2 lg:col-span-7 grid gap-4 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 min-w-0 content-start">
-          <ResourceGauges state={state} index={2} />
-          <AllocationPanel
-            allocation={state.allocation}
-            onChange={setAllocation}
-            location={location}
-            crewCount={state.crew.length}
-            disabled={ended}
-            index={3}
-          />
-        </div>
-        {/* Bottom-right */}
-        <div className="md:col-span-2 lg:col-span-5 relative min-w-0 h-[440px] lg:h-auto lg:min-h-[440px]">
-          <EventLog events={state.eventLog} location={location} index={4} className="absolute inset-0" />
-        </div>
-      </main>
+          <div className="md:col-span-2 lg:col-span-7 min-w-0 [&>section]:h-full">
+            <MissionStats state={state} index={1} />
+          </div>
+          {/* Top-right */}
+          <div className="md:col-span-2 lg:col-span-5 min-w-0 [&>section]:h-full">
+            <CrewStatus crew={state.crew} index={2} />
+          </div>
+          {/* Bottom-left */}
+          <div className="md:col-span-2 lg:col-span-7 grid gap-5 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 min-w-0 content-start">
+            <ResourceGauges state={state} index={3} />
+            <AllocationPanel
+              allocation={state.allocation}
+              onChange={setAllocation}
+              location={location}
+              crewCount={state.crew.length}
+              disabled={ended}
+              index={4}
+            />
+          </div>
+          {/* Bottom-right */}
+          <div className="md:col-span-2 lg:col-span-5 relative min-w-0 h-[480px] lg:h-auto lg:min-h-[480px] overflow-hidden">
+            <EventLog events={state.eventLog} location={location} index={5} className="absolute inset-0 overflow-hidden" />
+          </div>
+        </main>
+      </div>
 
       <MissionResult
         open={resultOpen}
@@ -241,43 +255,35 @@ export function OutpostDashboard({ location, crewCount, onExit, onOpenTutorial, 
 
 function ToastCard({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }) {
   const e = toast.event;
-  const meta =
-    e.type === 'success'
-      ? { color: toneFill.success, Icon: CheckCircleIcon }
-      : e.type === 'discovery'
-        ? { color: toneFill.info, Icon: SparkleIcon }
-        : e.type === 'failure'
-          ? { color: toneFill.danger, Icon: FailureIcon }
-          : { color: toneFill.danger, Icon: CriticalIcon };
+  const Icon = e.type === 'failure' ? FailureIcon : CriticalIcon;
 
   return (
     <motion.div
-      layout
-      initial={{ opacity: 0, y: -24, scale: 0.94 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -16, scale: 0.94, transition: springSnappy }}
-      transition={springSheet}
-      className={cx('toast pointer-events-auto w-full max-w-[380px] rounded-[18px] p-3 pr-2 flex gap-3 items-start gpu')}
+      initial={{ opacity: 0, scale: 0.5 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.5, transition: snapFast }}
+      transition={snapPop}
+      className="toast8 pointer-events-auto w-full max-w-[400px]"
     >
-      <span
-        className="grid place-items-center size-9 rounded-full shrink-0"
-        style={{ color: meta.color, background: `color-mix(in srgb, ${meta.color} 16%, transparent)` }}
-      >
-        <meta.Icon size={18} />
-      </span>
-      <div className="min-w-0 flex-1 pt-0.5">
-        <p className="text-[0.875rem] font-semibold text-label leading-snug">{e.title}</p>
-        <p className="text-[0.8125rem] text-label-secondary leading-snug mt-0.5 line-clamp-2">{e.description}</p>
+      <div className="toast8-head">
+        <span className="t-tag inline-flex items-center gap-2 blink">
+          <Icon size={16} />
+          {e.type === 'failure' ? 'Fallo del sistema' : 'Alerta'}
+        </span>
+        <button
+          type="button"
+          tabIndex={-1}
+          onPointerDown={onDismiss}
+          className="grid place-items-center size-7 text-px-black hover:bg-px-black hover:text-px-red"
+          aria-label="Cerrar alerta"
+        >
+          <CloseIcon size={8} />
+        </button>
       </div>
-      <button
-        type="button"
-        tabIndex={-1}
-        onPointerDown={onDismiss}
-        className="grid place-items-center size-7 rounded-full text-label-secondary hover:bg-fill active:bg-fill-strong shrink-0"
-        aria-label="Dismiss"
-      >
-        <CloseIcon size={14} />
-      </button>
+      <div className="px-4 py-3">
+        <p className="t-tag text-px-white leading-relaxed">{e.title}</p>
+        <p className="t-small text-px-dim mt-1.5 line-clamp-3">{e.description}</p>
+      </div>
     </motion.div>
   );
 }

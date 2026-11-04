@@ -1,12 +1,12 @@
-// Live O2 / water / food / power gauges. Values and bars spring toward each sim tick;
-// trends are smoothed (EMA over ~1 sim-day) so "days left" reads calmly instead of flickering.
+// Live O2 / water / food / power gauges as segmented block meters.
+// Trends are smoothed (EMA over ~1 sim-day) so "days left" reads calmly instead of flickering.
 import { useState, type ReactNode } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { SimulationState } from '../engine/types';
 import { BATTERY_CAPACITY_KWH, elapsedHours, type Tone } from '../lib/mission';
-import { springSnappy } from '../lib/motion';
-import { AnimatedNumber, Panel, SpringBar } from './primitives';
-import { toneFill, toneText } from '../lib/ui';
+import { snapFast } from '../lib/motion';
+import { AnimatedNumber, Explain, Panel, Pill, PixelBar } from './primitives';
+import { toneFill } from '../lib/ui';
 import { FoodIcon, OxygenIcon, PowerIcon, WaterIcon } from './icons';
 
 type Key = 'oxygen' | 'water' | 'food' | 'power';
@@ -22,19 +22,20 @@ interface GaugeDef {
 }
 
 const GAUGES: GaugeDef[] = [
-  { key: 'oxygen', label: 'Oxygen', unit: 'kg', capacity: 600, tint: 'var(--info)', icon: <OxygenIcon />, decimals: 0 },
-  { key: 'water', label: 'Water', unit: 'L', capacity: 3000, tint: '#0ea5e9', icon: <WaterIcon />, decimals: 0 },
-  { key: 'food', label: 'Food', unit: 'kg', capacity: 1000, tint: 'var(--success)', icon: <FoodIcon />, decimals: 0 },
+  { key: 'oxygen', label: 'O2', unit: 'kg', capacity: 600, tint: 'var(--px-white)', icon: <OxygenIcon size={16} />, decimals: 0 },
+  { key: 'water', label: 'Agua', unit: 'L', capacity: 3000, tint: 'var(--px-cyan)', icon: <WaterIcon size={16} />, decimals: 0 },
+  { key: 'food', label: 'Comida', unit: 'kg', capacity: 1000, tint: 'var(--px-green)', icon: <FoodIcon size={16} />, decimals: 0 },
   {
     key: 'power',
-    label: 'Battery',
+    label: 'Energía',
     unit: 'kWh',
     capacity: BATTERY_CAPACITY_KWH,
-    tint: '#eab308',
-    icon: <PowerIcon />,
+    tint: 'var(--px-yellow)',
+    icon: <PowerIcon size={16} />,
     decimals: 1,
   },
 ];
+const SR_LABEL: Record<Key, string> = { oxygen: 'Oxígeno', water: 'Agua', food: 'Alimentos', power: 'Batería' };
 
 type Rates = Record<Key, number>; // units per sim-hour, smoothed
 
@@ -79,7 +80,7 @@ export function ResourceGauges({ state, index }: { state: SimulationState; index
   const rates = useSmoothedRates(state);
 
   return (
-    <Panel title="Resources" subtitle="Live consumables and battery reserve" index={index}>
+    <Panel title="Recursos" accent="var(--px-cyan)" subtitle="Consumibles + batería" index={index}>
       <ul className="grid grid-cols-2 gap-3" role="list">
         {GAUGES.map((g) => {
           const value = state.resources[g.key];
@@ -100,62 +101,62 @@ export function ResourceGauges({ state, index }: { state: SimulationState; index
 
           let trend: string;
           if (isPower) {
-            trend = fraction > 0.97 ? 'Fully charged' : Math.abs(perDay) < 0.05 ? 'Holding' : perDay > 0 ? 'Charging' : 'Draining';
+            trend = fraction > 0.97 ? 'Llena' : Math.abs(perDay) < 0.05 ? 'Estable' : perDay > 0 ? 'Cargando +' : 'Descargando -';
           } else if (Math.abs(perDay) < 0.05) {
-            trend = 'Stable';
+            trend = 'Estable';
           } else if (daysLeft !== null) {
-            trend = daysLeft > 999 ? 'Declining slowly' : `≈ ${Math.round(daysLeft)} days left`;
+            trend = daysLeft > 999 ? 'Descenso lento' : `~${Math.round(daysLeft)} días restantes`;
           } else {
-            trend = `+${perDay.toFixed(1)} ${g.unit}/day`;
+            trend = `+${perDay.toFixed(1)} ${g.unit}/día`;
           }
 
           return (
-            <li key={g.key} className="rounded-[16px] bg-fill p-3.5 flex flex-col gap-2.5 min-w-0">
-              <div className="flex items-center gap-2">
-                <span
-                  className="grid place-items-center size-7 rounded-full shrink-0"
-                  style={{ color: fill, background: `color-mix(in srgb, ${fill} 16%, transparent)` }}
-                >
+            <li key={g.key} className={alertTone === 'danger' ? 'tile8 tile8-alert p-3 flex flex-col gap-2 min-w-0' : 'tile8 p-3 flex flex-col gap-2 min-w-0'}>
+              <div className="flex items-center gap-2 min-h-6">
+                <span style={{ color: fill }} aria-hidden="true">
                   {g.icon}
                 </span>
-                <span className="text-[0.8125rem] font-semibold text-label-secondary truncate">{g.label}</span>
+                <span className="t-tag text-px-white truncate">
+                  <span aria-hidden="true">{g.label}</span>
+                  <span className="sr-only">{SR_LABEL[g.key]}</span>
+                </span>
                 <AnimatePresence>
                   {alertTone === 'danger' && (
                     <motion.span
-                      initial={{ opacity: 0, scale: 0.6 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.6 }}
-                      transition={springSnappy}
-                      className="ml-auto text-[0.6875rem] font-bold uppercase tracking-wide"
-                      style={{ color: toneText.danger }}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={snapFast}
+                      className="ml-auto"
                     >
-                      Low
+                      <Pill tone="danger">Bajo</Pill>
                     </motion.span>
                   )}
                 </AnimatePresence>
               </div>
-              <div className="flex items-baseline gap-1 min-w-0">
-                <AnimatedNumber value={value} format={fmt} className="text-title text-[1.625rem] text-label" />
-                <span className="text-[0.8125rem] text-label-secondary">
-                  {isPower ? `/ ${g.capacity} ${g.unit}` : g.unit}
-                </span>
+              <div className="flex items-baseline gap-1.5 min-w-0 flex-wrap">
+                <AnimatedNumber value={value} format={fmt} className="t-display text-[1rem] text-px-white" />
+                <span className="t-small text-px-dim">{isPower ? `/${g.capacity} ${g.unit}` : g.unit}</span>
               </div>
-              <SpringBar
+              <PixelBar
                 value={fraction}
                 color={fill}
-                label={g.label}
+                label={SR_LABEL[g.key]}
                 valueText={`${fmt(value)} ${g.unit}, ${trend}`}
+                segments={12}
+                height={14}
               />
-              <p
-                className="text-[0.75rem] tabular truncate"
-                style={{ color: alertTone ? toneText[alertTone] : 'var(--label-secondary)' }}
-              >
+              <p className="resource-trend t-small tabular" style={{ color: alertTone ? toneFill[alertTone] : 'var(--px-dim)' }}>
                 {trend}
               </p>
             </li>
           );
         })}
       </ul>
+      <Explain summary="Qué consume cada recurso" className="mt-3">
+        Oxígeno, agua y comida dependen del tamaño de la tripulación. La batería se carga con el Sol y el reactor; por
+        la noche, una carga superior al reactor consume la reserva.
+      </Explain>
     </Panel>
   );
 }

@@ -1,12 +1,8 @@
-// Transport controls: play/pause (instant pointer-down feedback), speed, restart with a forgiving 2-step confirm.
+// Transport controls: big play/pause block, speed switch, restart with a forgiving 2-step confirm.
 import { useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
-import { springSnappy } from '../lib/motion';
-import { SPEEDS } from '../lib/ui';
+import { SPEEDS, cx } from '../lib/ui';
 import { SegmentedControl } from './primitives';
-import { cx } from '../lib/ui';
 import { PauseIcon, PlayIcon, RestartIcon } from './icons';
-
 
 interface ControlsProps {
   isRunning: boolean;
@@ -42,9 +38,9 @@ export function Controls({
   const handleRestart = () => {
     if (!hasProgress || ended || confirming) {
       setConfirming(false);
-      onRestart();
+      onRestart(); // SFX: descending 3-note arpeggio
     } else {
-      setConfirming(true);
+      setConfirming(true); // SFX: two-tone warning "beep-boop"
     }
   };
 
@@ -57,80 +53,47 @@ export function Controls({
   }, [restartRequest]);
 
   return (
-    <div className="flex items-center gap-2 sm:gap-3" role="group" aria-label="Simulation controls">
-      <motion.button
+    <div className="controls8 flex items-center gap-3" role="group" aria-label="Controles de simulación">
+      {/* SFX: play = rising "bloop", pause = falling "bloop" */}
+      <button
         type="button"
         onClick={onToggle}
         disabled={ended}
-        aria-label={isRunning ? 'Pause simulation' : 'Play simulation'}
+        aria-label={isRunning ? 'Pausar simulación' : 'Iniciar simulación'}
         aria-keyshortcuts="Space"
-        title={isRunning ? 'Pause (Space)' : 'Play (Space)'}
-        whileTap={{ scale: 0.9 }}
-        transition={springSnappy}
-        className={cx(
-          'relative grid place-items-center size-11 rounded-full bg-label text-canvas gpu',
-          'active:opacity-80 disabled:opacity-35',
-        )}
-        style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.15), 0 6px 16px -6px rgba(0,0,0,0.35)' }}
+        title={isRunning ? 'Pausar (Espacio)' : 'Iniciar (Espacio)'}
+        className={cx('controls8-play btn8 btn8-icon size-12', isRunning ? 'btn8-secondary' : 'btn8-primary')}
       >
-        <AnimatePresence mode="popLayout" initial={false}>
-          <motion.span
-            key={isRunning ? 'pause' : 'play'}
-            initial={{ opacity: 0, scale: 0.5, rotate: -45 }}
-            animate={{ opacity: 1, scale: 1, rotate: 0 }}
-            exit={{ opacity: 0, scale: 0.5, rotate: 45 }}
-            transition={springSnappy}
-            className="grid place-items-center"
-          >
-            {isRunning ? <PauseIcon size={18} /> : <PlayIcon size={18} className="translate-x-[1px]" />}
-          </motion.span>
-        </AnimatePresence>
-      </motion.button>
+        {isRunning ? <PauseIcon size={24} /> : <PlayIcon size={24} />}
+      </button>
 
       <SegmentedControl
-        label="Simulation speed"
+        label="Velocidad de simulación"
         size="sm"
         value={speed}
         onChange={onSpeed}
-        options={SPEEDS.map((s) => ({ value: s, label: `${s}×`, ariaLabel: `${s} times speed` }))}
-        className="w-[132px]"
+        options={SPEEDS.map((s) => ({ value: s, label: `${s}X`, ariaLabel: `Velocidad ${s} por` }))}
+        className="controls8-speed w-[150px]"
       />
 
-      <motion.button
+      <button
         type="button"
         onClick={handleRestart}
-        whileTap={{ scale: 0.94 }}
-        transition={springSnappy}
-        aria-label={confirming ? 'Confirm restart — progress will be lost' : 'Restart mission'}
-        title="Restart (R)"
+        aria-label={confirming ? 'Confirmar reinicio; se perderá el progreso' : 'Reiniciar misión'}
+        title="Reiniciar (R)"
         aria-keyshortcuts="R"
-        className={cx(
-          'relative h-9 w-[104px] rounded-[10px] overflow-hidden text-[0.8125rem] font-semibold gpu',
-          confirming ? 'text-white' : 'bg-fill text-label hover:bg-fill-strong active:bg-[var(--fill-pressed)]',
-        )}
-        style={confirming ? { background: 'var(--danger)' } : undefined}
+        className={cx('controls8-reset btn8 !w-[42px] sm:!w-[118px]', confirming ? 'btn8-danger blink' : 'btn8-secondary')}
       >
-        <AnimatePresence mode="popLayout" initial={false}>
-          <motion.span
-            key={confirming ? 'confirm' : 'restart'}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={springSnappy}
-            className="absolute inset-0 flex items-center justify-center gap-1.5"
-          >
-            {confirming ? (
-              'Confirm?'
-            ) : (
-              <>
-                <RestartIcon size={16} /> Restart
-              </>
-            )}
-          </motion.span>
-        </AnimatePresence>
-      </motion.button>
+        {confirming ? (
+          <span className="controls8-reset-label">¿Seguro?</span>
+        ) : (
+          <>
+            <RestartIcon size={16} /> <span className="controls8-reset-label">Reiniciar</span>
+          </>
+        )}
+      </button>
       <span className="sr-only" aria-live="polite">
-        {confirming ? 'Press restart again to confirm. Mission progress will be lost.' : ''}
+        {confirming ? 'Pulsa reiniciar otra vez para confirmar. Se perderá el progreso.' : ''}
       </span>
     </div>
   );

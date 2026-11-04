@@ -1,336 +1,195 @@
-# Space Mission Simulator
+<div align="center">
 
-An interactive space mission simulator featuring real NASA data, accurate physics calculations, and an intuitive interface for exploring orbital mechanics. This project brings space exploration to life through interactive visualization and realistic simulations.
+<img src="docs/assets/mission-hero.png" alt="Puesto Marte: cuatro astronautas operando un hábitat marciano en pixel art" width="100%" />
 
-## Features
+# PUESTO MARTE
 
-- **Real NASA Data**: Integrated with authentic NASA space mission data
-- **Physics Engine**: Accurate orbital mechanics and trajectory calculations
-- **Interactive Simulation**: Real-time visualization of space missions
-- **Responsive Design**: Works seamlessly on desktop, tablet, and mobile devices
-- **Performance Optimized**: Fast loading with optimized bundle size (<200KB gzipped)
-- **Accessible**: WCAG 2.1 AA compliant with keyboard navigation support
+### Un simulador de supervivencia espacial en 8-BIT
 
-## Quick Start
+Administra energía, recursos y tripulación durante una misión de 365 días. Cada decisión cambia el destino del puesto.
 
-### Prerequisites
+[![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-7-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Vite](https://img.shields.io/badge/Vite-8-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vite.dev/)
+[![Tests](https://img.shields.io/badge/tests-101%20passing-62FF73?style=for-the-badge)](#calidad)
+[![Vercel](https://img.shields.io/badge/Vercel-online-000000?style=for-the-badge&logo=vercel)](https://los-tira-vida.vercel.app)
 
-- Node.js 18+ and npm (comes with Node.js)
-- Git (for version control)
+[Jugar ahora](https://los-tira-vida.vercel.app) · [Cómo funciona](#cómo-se-juega) · [Instalación](#desarrollo-local) · [Equipo](#equipo)
 
-### Installation
-
-```bash
-# Clone the repository (if applicable)
-git clone <repository-url>
-cd "#LosTiraVida"
-
-# Install dependencies
-npm install
-```
-
-### Development
-
-```bash
-# Start the development server
-npm run dev
-```
-
-The app will be available at `http://localhost:5173` with hot module replacement (HMR) enabled.
-
-**Note**: The project directory contains a "#" character which may cause issues with Vite's dev server path resolution in some cases. If you experience issues, you can:
-1. Rename the directory to remove the "#" character
-2. Use `npm run preview` to test the production build locally instead
-3. Deploy to Vercel for testing (no issues there)
-
-### Build for Production
-
-```bash
-# Create optimized production build
-npm run build
-
-# Preview the production build locally
-npm run preview
-```
-
-The production build will be in the `dist/` directory.
-
-### Bundle Size Analysis
-
-```bash
-# Build and analyze bundle size
-npm run build:analyze
-```
-
-## Deployment
-
-### Deploy to Vercel (Recommended)
-
-Vercel is the recommended hosting platform for this project.
-
-#### Option 1: Using Vercel CLI
-
-```bash
-# Install Vercel CLI globally
-npm i -g vercel
-
-# Deploy from project directory
-vercel
-
-# Deploy to production
-vercel --prod
-```
-
-#### Option 2: Using GitHub Integration
-
-1. Push your code to GitHub
-2. Go to [vercel.com](https://vercel.com)
-3. Import your repository
-4. Vercel will automatically detect Vite and configure build settings
-5. Click "Deploy"
-
-#### Option 3: Using Git Integration
-
-1. Connect your repository to Vercel
-2. Each push to main will automatically deploy to production
-3. Pull requests will create preview deployments
-
-### Environment Variables
-
-If you need environment variables, create a `.env.local` file (see `.env.example` for template):
-
-```bash
-cp .env.example .env.local
-```
-
-Then edit `.env.local` with your values.
-
-In Vercel dashboard:
-1. Go to Project Settings > Environment Variables
-2. Add your variables
-3. Redeploy for changes to take effect
-
-## Project Structure
-
-```
-#LosTiraVida/
-├── public/               # Static assets (favicon, icons)
-├── src/
-│   ├── assets/          # Images and SVGs
-│   ├── components/      # React components
-│   ├── engine/          # Simulation engine and physics
-│   ├── hooks/           # Custom React hooks
-│   ├── App.jsx          # Main app component
-│   ├── main.jsx         # React entry point
-│   └── index.css        # Global styles
-├── index.html           # HTML entry point
-├── package.json         # Dependencies and scripts
-├── vite.config.js       # Vite configuration
-├── tailwind.config.js   # Tailwind CSS configuration
-└── vercel.json         # Vercel deployment configuration
-```
-
-## Available Scripts
-
-- `npm run dev` - Start development server (port 5173)
-- `npm run build` - Create production build
-- `npm run build:analyze` - Build and show bundle size
-- `npm run preview` - Preview production build locally
-- `npm run lint` - Run Oxlint code quality checks
-- `npm run type-check` - Run TypeScript type checking
-
-## Technology Stack
-
-- **React 19.3** - UI framework
-- **Vite 8.3** - Build tool and dev server
-- **Tailwind CSS 4.3** - Utility-first CSS framework
-- **TypeScript** - Type safety
-- **Oxlint** - JavaScript/TypeScript linter
-
-## Performance
-
-- **Bundle Size**: < 200KB gzipped (React + logic + styles)
-- **Time to Interactive**: < 2 seconds on 4G
-- **Lighthouse Score**: 90+ across all metrics
-- **Mobile Optimized**: Responsive design for all screen sizes
-
-## Browser Support
-
-- Chrome 90+
-- Firefox 88+
-- Safari 14+
-- Edge 90+
-- Mobile browsers (iOS Safari 14+, Chrome Android)
-
-## Game Instructions
-
-1. **Starting the Simulation**: Select a mission from the available options
-2. **Mission Parameters**: Configure initial conditions (launch angle, velocity, fuel)
-3. **Real-time Visualization**: Watch your spacecraft's trajectory in real-time
-4. **Physics Calculations**: See accurate orbital mechanics in action
-5. **Mission Analysis**: Review mission data after completion
-
-## Data Sources
-
-- NASA Space Mission Archive
-- NASA Orbital Mechanics Database
-- Real spacecraft telemetry data (where applicable)
-
-All data is used for educational purposes with proper attribution to NASA.
-
-## Accessibility
-
-This project adheres to WCAG 2.1 AA standards:
-
-- Keyboard navigation support
-- Screen reader friendly
-- Sufficient color contrast ratios
-- Clear focus indicators
-- Semantic HTML structure
-- ARIA labels where appropriate
-
-## Development Guidelines
-
-### Code Quality
-
-- Use TypeScript for type safety
-- Follow ESLint rules (configured via Oxlint)
-- Write semantic HTML
-- Test responsive design on multiple devices
-
-### Performance Considerations
-
-- Lazy load components when appropriate
-- Optimize images and assets
-- Use code splitting for large features
-- Monitor bundle size with `npm run build:analyze`
-
-### Accessibility Checklist
-
-- [ ] Keyboard navigable
-- [ ] Color contrast ≥ 4.5:1 for text
-- [ ] Images have alt text
-- [ ] Forms have labels
-- [ ] No auto-playing audio/video
-- [ ] Focus visible on interactive elements
-
-## Contributing
-
-1. Create a new branch for your feature
-2. Make your changes
-3. Run linting: `npm run lint`
-4. Run type checking: `npm run type-check`
-5. Test locally: `npm run dev`
-6. Build production: `npm run build`
-7. Create a pull request
-
-## Deployment Checklist
-
-Before deploying to production:
-
-- [ ] Run `npm run build` successfully
-- [ ] Run `npm run lint` with no errors
-- [ ] Run `npm run type-check` with no errors
-- [ ] Test locally with `npm run preview`
-- [ ] Test on mobile devices
-- [ ] Check Lighthouse score (target: 90+)
-- [ ] Verify no console errors in browser DevTools
-- [ ] Test accessibility with accessibility checker
-- [ ] Update version in package.json if needed
-- [ ] Test all main features
-
-## Troubleshooting
-
-### Build Fails
-
-```bash
-# Clear node_modules and reinstall
-rm -rf node_modules package-lock.json
-npm install
-npm run build
-```
-
-### Dev Server Not Starting
-
-```bash
-# Check if port 5173 is in use
-lsof -i :5173
-# If in use, kill the process or use a different port
-npm run dev -- --port 3000
-```
-
-### Large Bundle Size
-
-```bash
-# Analyze what's taking up space
-npm run build:analyze
-
-# Look for duplicate dependencies
-npm ls
-```
-
-### Deployment Issues
-
-1. Check build logs in Vercel dashboard
-2. Verify environment variables are set
-3. Ensure `package.json` build script is correct
-4. Check that all dependencies are properly installed
-
-## License
-
-[Add appropriate license - MIT, Apache 2.0, etc.]
-
-## Credits
-
-- Space mission data sourced from NASA public databases
-- Physics engine based on orbital mechanics principles
-- Built with React, Vite, and Tailwind CSS
-
-## Support
-
-For issues and questions:
-1. Check existing documentation
-2. Review the troubleshooting section
-3. Open an issue on GitHub with:
-   - Clear description of the problem
-   - Steps to reproduce
-   - Browser and OS information
-   - Any error messages
+</div>
 
 ---
 
-**Ready to launch? Deploy to Vercel with `vercel --prod`**
+## La misión
 
-## Testing
+Puesto Marte es un juego de estrategia y supervivencia inspirado en sistemas reales de soporte vital. Debes mantener con vida a cuatro tripulantes durante un año terrestre completo, equilibrando oxígeno, agua, alimentos, batería, radiación, moral y estrés.
 
-```bash
-npm test            # run all tests once (Vitest)
-npm run test:watch  # watch mode
-npm run type-check  # tsc --noEmit (must be clean)
-npm run lint        # oxlint
+No es un tablero estático: el hábitat está vivo. Los personajes 8-BIT patrullan, trabajan, descansan y reparan averías según el estado real de la simulación.
+
+<div align="center">
+
+<img src="docs/assets/mission-loop.gif" alt="Animación 8-BIT del equipo trabajando dentro del hábitat marciano" width="800" />
+
+</div>
+
+## Qué encontrarás
+
+| Sistema | Qué sucede en la misión |
+| --- | --- |
+| **Tripulación visible** | Cuatro especialistas animados trabajan en control, soporte vital, laboratorio e hidroponía. |
+| **Recursos conectados** | Oxígeno, agua, alimentos, batería y radiación evolucionan cada hora. |
+| **Energía limitada** | Distribuyes el presupuesto entre soporte vital, escudo e hidroponía. Nunca alcanza para todo. |
+| **Ciclo día/noche** | La producción solar cambia y obliga a sobrevivir con la batería durante la noche. |
+| **Emergencias** | Tormentas, fugas, fallas técnicas, radiación y enfermedades alteran la simulación. |
+| **Reparaciones con costo** | Asignar personal acelera las reparaciones, pero eleva su estrés. La ingeniería tiene ventaja. |
+| **Dificultad real** | Los niveles cambian reservas, radiación, eventos y batería inicial. |
+| **Interfaz en español** | Paneles, alertas, tutorial y explicaciones contextuales completamente localizados. |
+
+## Cómo se juega
+
+1. Elige una misión lunar o marciana y selecciona la dificultad.
+2. Inicia el reloj y observa el comportamiento del hábitat.
+3. Reparte la energía sin superar el 100 % del presupuesto.
+4. Reacciona a las alertas y asigna al tripulante adecuado para reparar.
+5. Controla moral, estrés, radiación y reservas hasta completar 365 días terrestres.
+
+La velocidad `1X` representa una hora simulada por segundo. `2X` y `4X` permiten avanzar con rapidez sin perder el control de las emergencias.
+
+### Señales importantes
+
+- **Verde:** el sistema opera normalmente.
+- **Amarillo:** requiere atención o está siendo reparado.
+- **Rojo:** existe una incidencia activa.
+- **Noche:** la base depende de la batería; una mala distribución energética puede terminar la misión.
+
+## Diseño 8-BIT
+
+La interfaz combina pixel art, tipografía de terminal, scanlines, alto contraste y animación funcional. El movimiento no es decorativo: comunica quién está trabajando, quién descansa y dónde ocurre una avería.
+
+El diseño se adapta a escritorio y celular. En pantallas pequeñas, el hábitat se convierte en una cuadrícula 2×2, los controles ocupan dos filas compactas y los paneles evitan desplazamiento horizontal.
+
+## Tecnología
+
+```text
+React 19 + TypeScript
+├── Motor de simulación por horas
+├── Sistema probabilístico de eventos
+├── Física y constantes de misión
+├── Componentes de interfaz accesibles
+├── Animaciones Motion + CSS
+└── Vite 8 + Tailwind CSS 4
 ```
 
-`npm test` goes through `scripts/run-tests.sh`: Vite/Vitest cannot load test files when the project path contains `#`
-(it is parsed as a URL fragment), so for a checkout such as `/Users/ice/#LosTiraVida` the script mirrors the repo to a temp
-dir and runs Vitest there. In a normal path it runs Vitest directly.
+La simulación y la presentación están separadas: `src/engine` mantiene las reglas del juego, mientras `src/components` representa el estado mediante paneles, alertas y personajes.
 
-Test files (`src/tests/`):
-- `nasaData.test.ts` - sanity checks of the NASA constants against published values (BVAD, ISS, MSL-RAD, Chang'E-4).
-  Tests wrapped in `it.fails` document known discrepancies: they pass while the data is wrong and turn red once it is
-  corrected, at which point switch them to `it`.
-- `simulation.test.ts` - `Physics`, `MissionSimulator` init/stepping, failure/success conditions, edge cases
-  (O2 = 0, night power loss, minimal allocation, morale/stress), `EventSystem`, and long-run stability (365 Earth days
-  on Moon and Mars, NaN/range checks, event-log and heap growth).
+## Desarrollo local
 
-### Known findings (see tests marked KNOWN ISSUE / BALANCE FINDING)
-- O2 0.84 kg/person/day, CO2 1.0, dry food 0.62, water 3.5 L: match NASA BVAD.
-- Lunar night is ~354 h, not 177 h (the file treats 354 h as the whole cycle; the full cycle is ~708 h).
-- Radiation: lunar dose (233 mSv/yr) is too low (Chang'E-4 ~500) and Mars (180) is below MSL-RAD (~240); 50 mSv/yr is the
-  ground occupational limit, NASA's spaceflight standard is a 600 mSv career limit. The engine compares cumulative dose to
-  the annual limit, so the default Moon mission fails by radiation after ~253 days.
-- Hydroponic yield (4 kg/m2/yr) and O2 per kg biomass (0.73, photosynthesis gives ~1.07) are off.
-- With default allocation Mars ends at ~sol 298 with all crew critical (stress saturates); minimal allocation fails sooner.
-  Morale only influences outcome indirectly (via the stress term and a log message).
-- Events (dust storm, leaks, ...) are log entries only; their `effects` are never applied to the simulation.
-- A Mars "sol" advances in 25 one-hour steps (hour counter resets when >= 24.6), ~1.6% drift.
-- `getState()` deep-copies the whole event log every tick (O(n) per frame); crew sizes above 6 get undefined names.
+Necesitas Node.js 20 o superior y npm.
+
+```bash
+git clone https://github.com/invertilo/LosTiraVida.git
+cd LosTiraVida
+npm install
+npm run dev
+```
+
+Abre [http://localhost:5173](http://localhost:5173).
+
+### Comandos
+
+| Comando | Uso |
+| --- | --- |
+| `npm run dev` | Inicia el servidor de desarrollo. |
+| `npm run build` | Genera la versión optimizada en `dist/`. |
+| `npm run preview` | Previsualiza la compilación de producción. |
+| `npm run test` | Ejecuta las pruebas del motor y balance. |
+| `npm run type-check` | Verifica TypeScript sin generar archivos. |
+| `npm run lint` | Revisa la calidad del código. |
+
+## Calidad
+
+El proyecto incluye pruebas de constantes NASA, consumo de recursos, eventos, dificultad, estabilidad a largo plazo y balance de misiones completas.
+
+```bash
+npm run type-check
+npm run lint
+npm run test
+npm run build
+```
+
+Estado actual: **101 pruebas correctas** y **7 casos documentados como fallos esperados** que registran discrepancias conocidas en los datos heredados.
+
+## Despliegue
+
+El proyecto está preparado para Vercel mediante `vercel.json`:
+
+```bash
+npm run build
+npx vercel --prod
+```
+
+Las rutas se redirigen a `index.html`, los recursos compilados reciben caché inmutable y se aplican cabeceras de seguridad.
+
+## Estructura
+
+```text
+LosTiraVida/
+├── docs/assets/          # Arte y animaciones del README
+├── public/               # Fuentes, íconos y recursos estáticos
+├── src/
+│   ├── components/       # Paneles, controles y personajes 8-BIT
+│   ├── engine/           # Simulación, eventos, física y datos NASA
+│   ├── hooks/            # Estado y reloj de la simulación
+│   ├── lib/              # Utilidades de misión, movimiento y puntuación
+│   ├── styles/           # Sistema visual 8-BIT y responsive
+│   └── tests/            # Pruebas de estabilidad y balance
+├── vercel.json
+└── vite.config.js
+```
+
+## Equipo
+
+<div align="center">
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <a href="https://github.com/invertilo">
+        <img src="https://github.com/invertilo.png" width="130" alt="Avatar de invertilo" />
+        <br /><br />
+        <strong>invertilo</strong>
+      </a>
+      <br />
+      Desarrollo y dirección del proyecto
+    </td>
+    <td align="center" width="50%">
+      <a href="https://github.com/alejondr3">
+        <img src="https://github.com/alejondr3.png" width="130" alt="Avatar de alejondr3" />
+        <br /><br />
+        <strong>alejondr3</strong>
+      </a>
+      <br />
+      Desarrollo y colaboración
+    </td>
+  </tr>
+</table>
+
+Hecho con curiosidad espacial, decisiones difíciles y muchos píxeles.
+
+</div>
+
+## Créditos y datos
+
+El juego utiliza valores inspirados en documentación pública de NASA BVAD, ISS, MSL-RAD y Chang'E-4. Las fuentes y los ajustes de jugabilidad están documentados en [`src/engine/NASAData.ts`](src/engine/NASAData.ts) y [`GAMEPLAY.md`](GAMEPLAY.md).
+
+El arte principal del README fue creado específicamente para este proyecto y no representa una misión oficial de NASA.
+
+---
+
+<div align="center">
+
+**¿Puedes mantener el puesto con vida durante 365 días?**
+
+[INICIAR MISIÓN](https://los-tira-vida.vercel.app)
+
+</div>

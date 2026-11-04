@@ -14,10 +14,10 @@ type Rand = () => number;
 const between = (random: Rand, lo: number, hi: number) => lo + random() * (hi - lo);
 
 const SYSTEM_LABEL: Record<AffectedSystem, { title: string; description: string }> = {
-  lifeSupport: { title: 'Life Support Degradation', description: 'CO2 scrubbing and O2 recycling are running below capacity.' },
-  power: { title: 'Power System Fault', description: 'Solar array and reactor output are reduced.' },
-  radiationShield: { title: 'Shield Generator Fault', description: 'Active radiation shielding is operating below capacity.' },
-  foodProduction: { title: 'Hydroponics Pump Failure', description: 'Crop growth lights and pumps are underperforming.' },
+  lifeSupport: { title: 'Degradación del soporte vital', description: 'El filtrado de CO2 y el reciclaje de O2 operan por debajo de su capacidad.' },
+  power: { title: 'Fallo del panel solar', description: 'La producción del panel solar está reducida.' },
+  radiationShield: { title: 'Fallo del generador de escudo', description: 'El blindaje activo contra radiación opera por debajo de su capacidad.' },
+  foodProduction: { title: 'Fallo de bomba hidropónica', description: 'Las luces y bombas de cultivo rinden por debajo de lo previsto.' },
 };
 const SYSTEMS: AffectedSystem[] = ['lifeSupport', 'power', 'radiationShield', 'foodProduction'];
 
@@ -39,8 +39,8 @@ const EVENT_DEFS: EventDef[] = [
       const pct = moon ? between(r, 0.3, 0.5) : between(r, 0.5, 0.8);
       const hours = Math.round(moon ? between(r, 12, 24) : between(r, 24, 48));
       return {
-        title: moon ? 'Lunar Dust Storm Detected' : 'Martian Dust Storm Warning',
-        description: `Dust is blocking sunlight: solar power -${Math.round(pct * 100)}% for ${hours} h.`,
+        title: moon ? 'Tormenta de polvo lunar detectada' : 'Alerta de tormenta marciana',
+        description: `El polvo bloquea la luz solar: energía -${Math.round(pct * 100)}% durante ${hours} h.`,
         effect: { kind: 'dust_storm', durationHours: hours, magnitude: pct },
       };
     },
@@ -53,7 +53,7 @@ const EVENT_DEFS: EventDef[] = [
       const hours = Math.round(between(r, 24, 72));
       return {
         title: SYSTEM_LABEL[system].title,
-        description: `${SYSTEM_LABEL[system].description} Effectiveness -${Math.round(pct * 100)}% until repaired (assign an engineer to speed this up).`,
+        description: `${SYSTEM_LABEL[system].description} Eficacia -${Math.round(pct * 100)}% hasta repararlo. Asigna personal para acelerar el trabajo.`,
         effect: { kind: 'equipment_failure', durationHours: hours, magnitude: pct, system },
       };
     },
@@ -64,8 +64,8 @@ const EVENT_DEFS: EventDef[] = [
       const litres = Math.round(between(r, 5, 10) * 10) / 10;
       const hours = Math.round(between(r, 48, 120));
       return {
-        title: 'Water System Leak Detected',
-        description: `Leak in the water recycling loop: ${litres} L lost per sol until sealed.`,
+        title: 'Fuga detectada en el sistema de agua',
+        description: `Fuga en el circuito de reciclaje: se pierden ${litres} L por sol hasta sellarla.`,
         effect: { kind: 'water_leak', durationHours: hours, magnitude: litres },
       };
     },
@@ -75,17 +75,17 @@ const EVENT_DEFS: EventDef[] = [
     build: (_loc, r) => {
       const hours = Math.round(between(r, 6, 12));
       return {
-        title: 'Solar Radiation Event',
-        description: `Solar particle event: radiation exposure doubled for ${hours} h. Raise shield power.`,
+        title: 'Evento de radiación solar',
+        description: `Evento de partículas solares: la exposición se duplica durante ${hours} h. Aumenta el escudo.`,
         effect: { kind: 'radiation_spike', durationHours: hours, magnitude: 2 },
       };
     },
   },
   {
-    kind: 'crop_disease', severity: 'warning', cooldownDays: 45,
+    kind: 'crop_disease', severity: 'warning', cooldownDays: 90,
     build: () => ({
-      title: 'Crop Disease Outbreak',
-      description: 'Mold in the hydroponic beds. Food production is zero until the current harvest cycle ends.',
+      title: 'Brote de enfermedad en cultivos',
+      description: 'Hay moho en los cultivos hidropónicos. La producción será cero hasta terminar el ciclo actual.',
       effect: { kind: 'crop_disease', durationHours: 0, magnitude: 1 },
     }),
   },
@@ -94,8 +94,8 @@ const EVENT_DEFS: EventDef[] = [
     build: (_loc, r) => {
       const hours = Math.round(between(r, 12, 36));
       return {
-        title: 'Communication Link Down',
-        description: `Antenna misaligned: no contact with Earth for ${hours} h. Crew morale -10 while it lasts.`,
+        title: 'Enlace de comunicación caído',
+        description: `Antena desalineada: sin contacto con la Tierra durante ${hours} h. Moral -10 mientras dure.`,
         effect: { kind: 'communication_loss', durationHours: hours, magnitude: 10 },
       };
     },
@@ -109,7 +109,9 @@ export class EventSystem {
   constructor(private readonly eventRateMultiplier: number = 1) {}
 
   generateEvent(state: SimulationState, random: () => number): SimulationEvent | null {
-    const baseChance = (state.location === 'moon' ? 0.15 : 0.25) * this.eventRateMultiplier; // Mars has more events
+    // Incidents should punctuate the mission, not bury the player in alerts.
+    // At 1X this averages roughly one incident every 25-40 real seconds.
+    const baseChance = (state.location === 'moon' ? 0.025 : 0.04) * this.eventRateMultiplier;
 
     if (random() > baseChance) return null;
 
@@ -139,16 +141,16 @@ export class EventSystem {
       return {
         timestamp: { day: state.dayNumber, hour: state.hourOfDay },
         type: 'warning',
-        title: 'Low Crew Morale',
-        description: 'Crew morale is critically low. Consider recreational activities or mission updates.',
+        title: 'Moral baja en la tripulación',
+        description: 'La moral está en nivel crítico. Considera descanso, recreación o novedades de la misión.',
       };
     }
 
-    if (random() < 0.05) {
+    if (random() < 0.012) {
       const morale_events = [
-        { title: 'Scientific Discovery', description: 'Crew discovers new geological formation. Morale +10!' },
-        { title: 'Supply Shipment Scheduled', description: 'Resupply mission confirmed for next month. Hope boost!' },
-        { title: 'Successful Repairs', description: 'Crew successfully completed major repairs. Confidence high!' },
+        { title: 'Descubrimiento científico', description: 'La tripulación descubre una nueva formación geológica. ¡Moral +10!' },
+        { title: 'Envío de suministros programado', description: 'Reabastecimiento confirmado para el próximo mes. ¡Sube la esperanza!' },
+        { title: 'Reparaciones completadas', description: 'La tripulación terminó reparaciones importantes. ¡Confianza alta!' },
       ];
       const evt = morale_events[Math.floor(random() * morale_events.length)];
       return {

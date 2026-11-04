@@ -1,24 +1,26 @@
-// Power allocation: three sliders sharing a 100% budget.
-// Dragging tracks the pointer 1:1 (grab offset respected); programmatic and keyboard changes spring.
+// Power allocation: three block sliders sharing a 100% budget.
+// Dragging tracks the pointer 1:1 (grab offset respected); the fill and the thumb snap to
+// 5% blocks on screen, while the value itself stays a precise integer percent.
 // Raising one slider past the free budget borrows proportionally from the others, so the
 // engine never has to renormalize (which would make the dragged thumb jump).
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import { animate, motion, useMotionValue, useTransform, type AnimationPlaybackControls } from 'motion/react';
 import type { LocationType, ResourceAllocation } from '../engine/types';
 import { POWER_SYSTEM } from '../engine/NASAData';
 import { allocationEffects, RADIATION_LIMIT_MSV } from '../lib/mission';
-import { spring, springSnappy } from '../lib/motion';
-import { Panel } from './primitives';
-import { cx, toneText } from '../lib/ui';
-import { FoodIcon, LungsIcon, ShieldIcon } from './icons';
+import { snap, snapFast } from '../lib/motion';
+import { Explain, Panel } from './primitives';
+import { cx, toneFill } from '../lib/ui';
+import { FoodIcon, LungsIcon, ShieldIcon, WarningIcon } from './icons';
 
 type AllocKey = 'lifeSupportPower' | 'radiationShieldPower' | 'foodProductionPower';
 const KEYS: AllocKey[] = ['lifeSupportPower', 'radiationShieldPower', 'foodProductionPower'];
+const BLOCKS = 20; // 5% per block
 
-const META: Record<AllocKey, { label: string; color: string; icon: ReactNode }> = {
-  lifeSupportPower: { label: 'Life Support', color: 'var(--info)', icon: <LungsIcon size={18} /> },
-  radiationShieldPower: { label: 'Radiation Shield', color: '#a855f7', icon: <ShieldIcon size={18} /> },
-  foodProductionPower: { label: 'Food Production', color: 'var(--success)', icon: <FoodIcon size={18} /> },
+const META: Record<AllocKey, { label: string; short: string; color: string; icon: ReactNode }> = {
+  lifeSupportPower: { label: 'Soporte vital', short: 'Soporte', color: 'var(--px-cyan)', icon: <LungsIcon size={16} /> },
+  radiationShieldPower: { label: 'Escudo de radiación', short: 'Escudo', color: 'var(--px-dim)', icon: <ShieldIcon size={16} /> },
+  foodProductionPower: { label: 'Producción de alimentos', short: 'Alimento', color: 'var(--px-green)', icon: <FoodIcon size={16} /> },
 };
 
 /** Set `key` to `v`, scaling the other two down proportionally if the total would exceed 100. */
@@ -36,6 +38,9 @@ function rebalance(alloc: Record<AllocKey, number>, key: AllocKey, v: number): R
   });
   return next;
 }
+
+/** Snap 0–1 to the nearest block; anything above zero lights at least one block. */
+const toBlocks = (p: number) => (p <= 0 ? 0 : Math.max(1, Math.round(p * BLOCKS)) / BLOCKS);
 
 /* ---------- Slider ---------- */
 
@@ -56,7 +61,7 @@ function Slider({ id, label, value, onChange, color, icon, detail }: SliderProps
   const anim = useRef<AnimationPlaybackControls | null>(null);
   const [pressed, setPressed] = useState(false);
 
-  // External changes (rebalancing, keyboard, restart) spring from the *current* on-screen value.
+  // External changes (rebalancing, keyboard, restart) hop from the *current* on-screen value.
   useEffect(() => {
     const target = value / 100;
     if (dragging.current) {
@@ -65,10 +70,10 @@ function Slider({ id, label, value, onChange, color, icon, detail }: SliderProps
       return;
     }
     anim.current?.stop();
-    anim.current = animate(progress, target, spring);
+    anim.current = animate(progress, target, snap);
   }, [value, progress]);
 
-  const fillX = useTransform(progress, (p) => `${(p - 1) * 100}%`);
+  const fillX = useTransform(progress, (p) => `${(toBlocks(p) - 1) * 100}%`);
 
   const valueFromClientX = (clientX: number, offset = 0) => {
     const rect = trackRef.current!.getBoundingClientRect();
@@ -86,7 +91,7 @@ function Slider({ id, label, value, onChange, color, icon, detail }: SliderProps
     // Grabbed the thumb → keep the grab offset. Pressed the track → jump there, then track 1:1.
     const offset = Math.abs(e.clientX - thumbX) <= 16 ? e.clientX - thumbX : 0;
     dragging.current = { offset };
-    setPressed(true);
+    setPressed(true); // SFX: "chk" grab click
     const p = valueFromClientX(e.clientX, offset);
     progress.set(p);
     onChange(Math.round(p * 100));
@@ -96,15 +101,14 @@ function Slider({ id, label, value, onChange, color, icon, detail }: SliderProps
     if (!dragging.current) return;
     const p = valueFromClientX(e.clientX, dragging.current.offset);
     progress.set(p);
-    onChange(Math.round(p * 100));
+    onChange(Math.round(p * 100)); // SFX: rising/falling blip each time a new block lights
   };
 
   const endDrag = () => {
     if (!dragging.current) return;
     dragging.current = null;
     setPressed(false);
-    // Settle precisely onto the committed integer value.
-    anim.current = animate(progress, value / 100, springSnappy);
+    anim.current = animate(progress, value / 100, snapFast);
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -122,19 +126,17 @@ function Slider({ id, label, value, onChange, color, icon, detail }: SliderProps
   };
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-1.5">
       <div className="flex items-center gap-2">
-        <span
-          className="grid place-items-center size-7 rounded-full shrink-0"
-          style={{ color, background: `color-mix(in srgb, ${color} 16%, transparent)` }}
-          aria-hidden="true"
-        >
+        <span style={{ color }} aria-hidden="true">
           {icon}
         </span>
-        <span id={`${id}-label`} className="text-[0.9375rem] font-semibold text-label">
+        <span id={`${id}-label`} className="t-tag text-px-white">
           {label}
         </span>
-        <span className="ml-auto text-[0.9375rem] font-semibold text-label tabular">{value}%</span>
+        <span className="ml-auto t-title tabular" style={{ color }}>
+          {String(value).padStart(3, ' ')}%
+        </span>
       </div>
 
       <div
@@ -145,54 +147,33 @@ function Slider({ id, label, value, onChange, color, icon, detail }: SliderProps
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={value}
-        aria-valuetext={`${value} percent`}
+        aria-valuetext={`${value} por ciento`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
         onLostPointerCapture={endDrag}
         onKeyDown={onKeyDown}
-        className="group relative h-11 flex items-center cursor-pointer touch-none rounded-full outline-offset-4"
+        className="group relative h-11 flex items-center cursor-pointer touch-none"
       >
-        <div ref={trackRef} className="relative h-2 w-full overflow-hidden rounded-full bg-track">
-          <motion.div className="absolute inset-0 rounded-full gpu" style={{ x: fillX, background: color }} />
+        <div ref={trackRef} className="bar8 h-7">
+          <div className="bar8-inner">
+            <motion.div className="bar8-fill w-full" style={{ x: fillX, background: color }} />
+            <div className="bar8-grid" style={{ '--seg': BLOCKS } as CSSProperties} />
+          </div>
         </div>
-        {/* Thumb rides the right edge of a full-width wrapper that shares the fill's translate → transform-only */}
-        <motion.div className="pointer-events-none absolute inset-x-0 top-1/2 h-0 gpu" style={{ x: fillX }} aria-hidden="true">
+        {/* Thumb rides the right edge of a full-width wrapper that shares the fill's translate. */}
+        <motion.div className="pointer-events-none absolute inset-x-0 top-1/2 h-0" style={{ x: fillX }} aria-hidden="true">
           <div className="absolute right-0 top-0 translate-x-1/2 -translate-y-1/2">
-            <motion.div
-              className="size-6 rounded-full bg-white"
-              style={{
-                boxShadow: '0 0.5px 1px rgba(0,0,0,0.2), 0 3px 8px rgba(0,0,0,0.18), 0 0 0 0.5px rgba(0,0,0,0.06)',
-              }}
-              animate={{ scale: pressed ? 1.18 : 1 }}
-              transition={springSnappy}
-            />
+            <div className="thumb8" data-pressed={pressed} />
           </div>
         </motion.div>
       </div>
 
-      <p id={`${id}-detail`} className="text-[0.75rem] text-label-secondary tabular leading-snug min-h-[1.1rem]">
+      <p id={`${id}-detail`} className="t-small text-px-dim tabular leading-tight min-h-[1.3rem]">
         {detail}
       </p>
     </div>
-  );
-}
-
-/* ---------- Budget bar (stacked, transform-only) ---------- */
-
-function BudgetLayer({ end, color }: { end: number; color: string }) {
-  const mv = useMotionValue(end);
-  useEffect(() => {
-    const c = animate(mv, end, spring);
-    return () => c.stop();
-  }, [end, mv]);
-  const x = useTransform(mv, (e) => `${(e - 1) * 100}%`);
-  return (
-    <motion.div
-      className="absolute inset-0 gpu"
-      style={{ x, background: color, boxShadow: '2px 0 0 var(--canvas)' }}
-    />
   );
 }
 
@@ -236,46 +217,67 @@ export function AllocationPanel({ allocation, onChange, location, crewCount, dis
   const details: Record<AllocKey, ReactNode> = {
     lifeSupportPower: (
       <>
-        O₂ +{fx.o2PerDay.toFixed(1)} kg/day (crew uses {fx.o2Demand.toFixed(1)}) · water recycling{' '}
+        O2 +{fx.o2PerDay.toFixed(1)} kg/día (consumo {fx.o2Demand.toFixed(1)}) · reciclaje de agua{' '}
         {Math.round(fx.waterRecovery * 100)}%
       </>
     ),
     radiationShieldPower: (
-      <span style={doseTone ? { color: toneText[doseTone] } : undefined}>
-        Projected dose {fx.annualDose.toFixed(0)} mSv/yr · NASA limit {RADIATION_LIMIT_MSV}
+      <span style={doseTone ? { color: toneFill[doseTone] } : undefined}>
+        Dosis {fx.annualDose.toFixed(0)} mSv/año · límite NASA {RADIATION_LIMIT_MSV}
       </span>
     ),
     foodProductionPower: (
       <>
-        Harvest +{fx.foodPerDay.toFixed(1)} kg/day (crew eats {fx.foodDemand.toFixed(1)})
+        Cosecha +{fx.foodPerDay.toFixed(1)} kg/día (consumo {fx.foodDemand.toFixed(1)})
       </>
     ),
   };
 
+  // Stacked budget strip, boundaries snapped to whole 5% blocks.
+  const cut = (pct: number) => (Math.round((pct / 100) * BLOCKS) / BLOCKS) * 100;
+  const b1 = cut(values.lifeSupportPower);
+  const b2 = cut(values.lifeSupportPower + values.radiationShieldPower);
+  const b3 = cut(total);
+
   return (
     <Panel
-      title="Power Allocation"
-      subtitle="Split the outpost's power budget between systems"
+      title="Distribución de energía"
+      accent="var(--px-dim)"
+      subtitle="Reparte el presupuesto energético"
       index={index}
       className={cx(disabled && 'opacity-60')}
     >
-      <fieldset disabled={disabled} className="flex flex-col gap-4 min-w-0">
-        <legend className="sr-only">Power allocation</legend>
+      <fieldset disabled={disabled} className="flex flex-col gap-3 min-w-0">
+        <legend className="sr-only">Distribución de energía</legend>
         <div>
-          <div className="flex justify-between text-[0.75rem] mb-1.5">
-            <span className="text-label-secondary">Budget</span>
-            <span className="text-label font-semibold tabular">
-              {total}% used · {100 - total}% idle
+          <div className="flex justify-between t-small mb-1.5">
+            <span className="text-px-dim">Presupuesto</span>
+            <span className="text-px-white tabular">
+              {total}% usado · {100 - total}% libre
             </span>
           </div>
-          <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-track" aria-hidden="true">
-            <BudgetLayer end={total / 100} color={META.foodProductionPower.color} />
-            <BudgetLayer
-              end={(values.lifeSupportPower + values.radiationShieldPower) / 100}
-              color={META.radiationShieldPower.color}
-            />
-            <BudgetLayer end={values.lifeSupportPower / 100} color={META.lifeSupportPower.color} />
+          <div className="bar8 h-5" aria-hidden="true">
+            <div className="bar8-inner">
+              <div className="bar8-fill" style={{ left: 0, width: `${b1}%`, background: META.lifeSupportPower.color }} />
+              <div
+                className="bar8-fill"
+                style={{ left: `${b1}%`, width: `${b2 - b1}%`, background: META.radiationShieldPower.color }}
+              />
+              <div
+                className="bar8-fill"
+                style={{ left: `${b2}%`, width: `${b3 - b2}%`, background: META.foodProductionPower.color }}
+              />
+              <div className="bar8-grid" style={{ '--seg': BLOCKS } as CSSProperties} />
+            </div>
           </div>
+          <ul className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 t-small text-px-dim" aria-hidden="true">
+            {KEYS.map((k) => (
+              <li key={k} className="inline-flex items-center gap-1.5">
+                <span className="inline-block size-2.5" style={{ background: META[k].color }} />
+                {META[k].short}
+              </li>
+            ))}
+          </ul>
         </div>
 
         {KEYS.map((k) => (
@@ -292,12 +294,22 @@ export function AllocationPanel({ allocation, onChange, location, crewCount, dis
         ))}
 
         <p
-          className="text-[0.75rem] rounded-[12px] bg-fill px-3 py-2 tabular"
-          style={{ color: nightDeficit ? toneText.warning : 'var(--label-secondary)' }}
+          className="tile8 t-small px-3 py-2 tabular flex items-start gap-2"
+          style={{
+            color: nightDeficit ? 'var(--px-yellow)' : 'var(--px-dim)',
+            borderColor: nightDeficit ? 'var(--px-yellow)' : undefined,
+          }}
         >
-          Night load {nightDraw.toFixed(1)} kW vs. reactor {reactor.toFixed(1)} kW
-          {nightDeficit ? ' — battery will drain after sunset' : ' — nights are covered'}
+          {nightDeficit && <WarningIcon size={16} className="shrink-0 mt-0.5" />}
+          <span>
+            Carga nocturna {nightDraw.toFixed(1)} kW vs reactor {reactor.toFixed(1)} kW
+            {nightDeficit ? ' — la batería se descarga al anochecer' : ' — noches cubiertas'}
+          </span>
         </p>
+        <Explain summary="Cómo repartir la energía">
+          Los tres sistemas comparten un máximo de 100%. Soporte vital recupera oxígeno y agua; el escudo reduce la
+          radiación; hidroponía produce comida. Revisa siempre la carga nocturna antes de aumentar un sistema.
+        </Explain>
       </fieldset>
     </Panel>
   );

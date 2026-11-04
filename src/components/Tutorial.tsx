@@ -1,9 +1,9 @@
-// Onboarding: a short, swipeable walkthrough of the mechanics.
-// Swipes use momentum projection (a flick advances even if short), edges rubber-band,
-// and pages enter/exit along the same horizontal path. Arrow keys work too.
-import { useId, useState, type ReactNode } from 'react';
+// HOW TO PLAY: a retro help screen, paged like an old instruction booklet.
+// Swipes use momentum projection (a flick advances even if short); pages hop in with
+// stepped motion. Arrow keys work too.
+import { useId, useState, type CSSProperties, type ReactNode } from 'react';
 import { AnimatePresence, motion, type PanInfo } from 'motion/react';
-import { project, spring, springMomentum } from '../lib/motion';
+import { project, snapSlide } from '../lib/motion';
 import { Modal } from './Modal';
 import { Button, IconButton } from './primitives';
 import { cx } from '../lib/ui';
@@ -31,15 +31,12 @@ interface Step {
   facts?: string[];
 }
 
+/** Square art box with the icons drawn in palette colours. */
 function Art({ color, children }: { color: string; children: ReactNode }) {
   return (
     <div
-      className="relative mx-auto grid place-items-center size-24 rounded-[28px]"
-      style={{
-        color,
-        background: `radial-gradient(120% 120% at 30% 20%, color-mix(in srgb, ${color} 28%, transparent), color-mix(in srgb, ${color} 8%, transparent))`,
-        boxShadow: `inset 0 1px 0 var(--material-edge), 0 12px 32px -12px color-mix(in srgb, ${color} 60%, transparent)`,
-      }}
+      className="relative mx-auto grid place-items-center size-24 bg-px-navy border-4"
+      style={{ color, borderColor: color, boxShadow: '6px 6px 0 0 var(--px-navy)' }}
       aria-hidden="true"
     >
       {children}
@@ -49,102 +46,100 @@ function Art({ color, children }: { color: string; children: ReactNode }) {
 
 const STEPS: Step[] = [
   {
-    eyebrow: 'Welcome, Commander',
-    title: 'Keep the outpost alive for one year',
-    body: 'You run a crewed habitat on the Moon or Mars. Balance power, consumables and crew health to survive 365 Earth days. Every number is grounded in NASA mission data.',
+    eyebrow: 'Bienvenido, comandante',
+    title: 'Mantén vivo el puesto durante 1 año',
+    body: 'Diriges un hábitat tripulado en la Luna o Marte. Equilibra energía, consumibles y salud para sobrevivir 365 días terrestres. Cada cifra se basa en datos de misiones NASA.',
     art: (
-      <Art color="var(--info)">
-        <PeopleIcon size={44} strokeWidth={1.5} />
+      <Art color="var(--px-cyan)">
+        <PeopleIcon size={48} />
       </Art>
     ),
-    facts: ['365 Earth days', 'Real NASA figures', '2–6 crew'],
+    facts: ['365 días terrestres', 'Datos reales NASA', '2-6 tripulantes'],
   },
   {
-    eyebrow: 'Resources',
-    title: 'Watch your consumables',
-    body: 'Oxygen, water and food drain every hour. Gauges show what’s left and, when a supply is falling, about how many days remain. When a gauge turns amber or red, act fast.',
+    eyebrow: 'Recursos',
+    title: 'Vigila tus suministros',
+    body: 'El oxígeno, el agua y la comida se consumen cada hora. Los indicadores muestran cuánto queda y, si baja una reserva, los días aproximados restantes. Cuando un indicador se vuelva amarillo o rojo, actúa rápido.',
     art: (
-      <Art color="#0ea5e9">
-        <div className="grid grid-cols-2 gap-1.5">
-          <OxygenIcon size={26} />
-          <WaterIcon size={26} />
-          <FoodIcon size={26} />
-          <PowerIcon size={26} />
+      <Art color="var(--px-white)">
+        <div className="grid grid-cols-2 gap-2">
+          <OxygenIcon size={24} />
+          <WaterIcon size={24} style={{ color: 'var(--px-cyan)' }} />
+          <FoodIcon size={24} style={{ color: 'var(--px-green)' }} />
+          <PowerIcon size={24} style={{ color: 'var(--px-yellow)' }} />
         </div>
       </Art>
     ),
-    facts: ['O₂ 0.84 kg/person/day', 'Food 0.62 kg/person/day', 'Battery 20 kWh'],
+    facts: ['O2 0,84 kg/persona/día', 'Comida 0,62 kg/persona/día', 'Batería 20 kWh'],
   },
   {
-    eyebrow: 'Power allocation',
-    title: 'Split one budget three ways',
+    eyebrow: 'Distribución de energía',
+    title: 'Reparte un presupuesto entre 3 sistemas',
     body: (
       <>
-        <strong className="text-label">Life Support</strong> makes oxygen and recycles water.{' '}
-        <strong className="text-label">Radiation Shield</strong> lowers your dose.{' '}
-        <strong className="text-label">Food Production</strong> grows hydroponic crops. The three share 100%, so
-        raising one draws from the others.
+        <strong className="text-px-cyan font-normal">Soporte vital</strong> produce oxígeno y recicla agua.{' '}
+        <strong className="text-px-dim font-normal">Escudo de radiación</strong> reduce la dosis.{' '}
+        <strong className="text-px-green font-normal">Producción de alimentos</strong> cultiva plantas hidropónicas. Los tres comparten
+        el 100%, así que aumentar uno reduce los demás.
       </>
     ),
     art: (
-      <Art color="#a855f7">
-        <div className="flex items-center gap-1.5">
-          <LungsIcon size={26} />
-          <ShieldIcon size={30} />
-          <FoodIcon size={26} />
+      <Art color="var(--px-dim)">
+        <div className="flex items-center gap-1">
+          <LungsIcon size={24} style={{ color: 'var(--px-cyan)' }} />
+          <ShieldIcon size={24} />
+          <FoodIcon size={24} style={{ color: 'var(--px-green)' }} />
         </div>
       </Art>
     ),
-    facts: ['ISS O₂ generator: up to 9 kg/day', 'Water recovery: 98%', 'Dose limit: 50 mSv/yr'],
+    facts: ['Generador O2 ISS: 9 kg/día', 'Recuperación de agua: 98%', 'Límite: 50 mSv/año'],
   },
   {
-    eyebrow: 'Day & night',
-    title: 'Survive the dark',
-    body: 'Solar panels only work in daylight. A 6 kW fission reactor runs around the clock, but if your night-time load is higher, the battery drains. A Mars night lasts 12 hours. A lunar night lasts 177.',
+    eyebrow: 'Día y noche',
+    title: 'Sobrevive a la oscuridad',
+    body: 'Los paneles solares solo funcionan de día. Un reactor de fisión de 6 kW opera siempre, pero si la carga nocturna es mayor, la batería se descarga. Una noche marciana dura 12 horas; una noche lunar, 177.',
     art: (
-      <Art color="#eab308">
+      <Art color="var(--px-yellow)">
         <div className="flex items-center gap-2">
-          <SunIcon size={30} />
-          <MoonIcon size={26} />
+          <SunIcon size={32} />
+          <MoonIcon size={24} style={{ color: 'var(--px-dim)' }} />
         </div>
       </Art>
     ),
-    facts: ['Mars sol: 24.6 h', 'Lunar day: 354 h', 'Kilopower reactor'],
+    facts: ['Sol marciano: 24,6 h', 'Día lunar: 354 h', 'Reactor Kilopower'],
   },
   {
-    eyebrow: 'Crew',
-    title: 'Look after your people',
-    body: 'Stress builds during work shifts and eases while the crew sleeps, more so with strong life support. Low supplies and high radiation push stress up. If every crew member becomes critical, the mission ends.',
+    eyebrow: 'Tripulación',
+    title: 'Cuida a tu gente',
+    body: 'El estrés aumenta durante el trabajo y disminuye mientras la tripulación duerme, especialmente con un buen soporte vital. La escasez y la radiación elevan el estrés. Si todos llegan a estado crítico, la misión termina.',
     art: (
-      <Art color="var(--success)">
-        <PeopleIcon size={44} strokeWidth={1.5} />
+      <Art color="var(--px-green)">
+        <PeopleIcon size={48} />
       </Art>
     ),
-    facts: ['Healthy → Fatigued → Strained → Critical'],
+    facts: ['OK > Cansancio > Lesión > Crítico'],
   },
   {
-    eyebrow: 'Controls',
-    title: 'You’re ready',
+    eyebrow: 'Controles',
+    title: 'Listo, jugador 1',
     body: (
-      <ul className="grid gap-2 text-left max-w-[300px] mx-auto">
+      <ul className="grid gap-3 text-left max-w-[320px] mx-auto">
         {[
-          ['Space', 'Play / pause'],
-          ['1 · 2 · 3', 'Speed 1× · 2× · 4×'],
-          ['R', 'Restart mission'],
-          ['?', 'Open this guide'],
+          ['Espacio', 'Iniciar / pausar'],
+          ['1 2 3', 'Velocidad 1X 2X 4X'],
+          ['R', 'Reiniciar misión'],
+          ['?', 'Abrir esta guía'],
         ].map(([k, v]) => (
           <li key={k} className="flex items-center justify-between gap-4">
-            <kbd className="min-w-[64px] text-center rounded-[8px] bg-fill-strong px-2 py-1 text-[0.8125rem] font-semibold text-label font-sans">
-              {k}
-            </kbd>
-            <span className="text-label-secondary">{v}</span>
+            <kbd className="kbd8">{k}</kbd>
+            <span className="text-px-white">{v}</span>
           </li>
         ))}
       </ul>
     ),
     art: (
-      <Art color="var(--info)">
-        <PlayIcon size={38} />
+      <Art color="var(--px-yellow)">
+        <PlayIcon size={48} />
       </Art>
     ),
   },
@@ -156,7 +151,7 @@ interface TutorialProps {
   finishLabel?: string;
 }
 
-export function Tutorial({ open, onClose, finishLabel = 'Get started' }: TutorialProps) {
+export function Tutorial({ open, onClose, finishLabel = 'Comenzar' }: TutorialProps) {
   const titleId = useId();
   const bodyId = useId();
   const [[page, direction], setPage] = useState<[number, number]>([0, 0]);
@@ -165,13 +160,13 @@ export function Tutorial({ open, onClose, finishLabel = 'Get started' }: Tutoria
 
   const go = (next: number) => {
     const clamped = Math.max(0, Math.min(STEPS.length - 1, next));
-    if (clamped !== page) setPage([clamped, clamped > page ? 1 : -1]);
+    if (clamped !== page) setPage([clamped, clamped > page ? 1 : -1]); // SFX: page-flip "blip"
   };
 
   const close = () => {
     onClose();
     // Reset after the exit animation so reopening starts at the beginning.
-    setTimeout(() => setPage([0, 0]), 400);
+    setTimeout(() => setPage([0, 0]), 300);
   };
 
   const onDragEnd = (_: unknown, info: PanInfo) => {
@@ -196,48 +191,52 @@ export function Tutorial({ open, onClose, finishLabel = 'Get started' }: Tutoria
           }
         }}
       >
-        <div className="flex items-center justify-between px-5 pt-4">
-          <span className="text-eyebrow tabular">
-            {page + 1} of {STEPS.length}
+        {/* Title bar */}
+        <div className="flex items-center justify-between gap-3 pl-4 pr-2 py-2 bg-px-yellow text-px-black">
+          <span className="t-title">Cómo jugar</span>
+          <span className="flex items-center gap-3">
+            <span className="t-tag tabular">
+              Página {page + 1}/{STEPS.length}
+            </span>
+            <IconButton label="Cerrar guía" onClick={close} variant="secondary" className="!size-8">
+              <CloseIcon size={8} />
+            </IconButton>
           </span>
-          <IconButton label="Close guide" onClick={close} className="size-8">
-            <CloseIcon size={16} />
-          </IconButton>
         </div>
 
-        <div className="relative overflow-hidden min-h-[400px] sm:min-h-[380px]">
+        <div className="relative overflow-hidden min-h-[460px] sm:min-h-[420px]">
           <AnimatePresence initial={false} custom={direction} mode="popLayout">
             <motion.div
               key={page}
               custom={direction}
               variants={{
-                enter: (d: number) => ({ x: d >= 0 ? 80 : -80, opacity: 0 }),
+                enter: (d: number) => ({ x: d >= 0 ? 64 : -64, opacity: 0 }),
                 center: { x: 0, opacity: 1 },
-                exit: (d: number) => ({ x: d >= 0 ? -80 : 80, opacity: 0 }),
+                exit: (d: number) => ({ x: d >= 0 ? -64 : 64, opacity: 0 }),
               }}
               initial="enter"
               animate="center"
               exit="exit"
-              transition={springMomentum}
+              transition={snapSlide}
               drag="x"
               dragConstraints={{ left: 0, right: 0 }}
               dragElastic={page === 0 || last ? 0.12 : 0.35}
-              dragTransition={{ bounceStiffness: 500, bounceDamping: 40 }}
+              dragTransition={{ bounceStiffness: 900, bounceDamping: 60 }}
               onDragEnd={onDragEnd}
-              className="absolute inset-0 px-7 pt-6 pb-2 flex flex-col items-center text-center cursor-grab active:cursor-grabbing touch-pan-y gpu"
+              className="absolute inset-0 px-6 pt-7 pb-2 flex flex-col items-center text-center cursor-grab active:cursor-grabbing touch-pan-y"
             >
               <div className="mb-6">{step.art}</div>
-              <p className="text-eyebrow mb-2">{step.eyebrow}</p>
-              <h2 id={titleId} className="text-display text-[1.75rem] sm:text-[2rem] text-label mb-3 text-balance">
+              <p className="t-tag text-px-cyan mb-3">{step.eyebrow}</p>
+              <h2 id={titleId} className="t-display text-[1rem] sm:text-[1.25rem] text-px-white mb-4 text-balance leading-relaxed">
                 {step.title}
               </h2>
-              <div id={bodyId} className="text-[0.9688rem] leading-relaxed text-label-secondary max-w-[440px] text-pretty">
+              <div id={bodyId} className="t-body text-px-dim max-w-[460px] text-pretty">
                 {step.body}
               </div>
               {step.facts && (
-                <ul className="mt-5 flex flex-wrap justify-center gap-1.5" aria-label="Key figures">
+                <ul className="mt-5 flex flex-wrap justify-center gap-2" aria-label="Datos clave">
                   {step.facts.map((f) => (
-                    <li key={f} className="rounded-full bg-fill px-2.5 py-1 text-[0.75rem] font-medium text-label-secondary">
+                    <li key={f} className="tag8 tag8-outline" style={{ '--tag-color': 'var(--px-yellow)' } as CSSProperties}>
                       {f}
                     </li>
                   ))}
@@ -247,25 +246,23 @@ export function Tutorial({ open, onClose, finishLabel = 'Get started' }: Tutoria
           </AnimatePresence>
         </div>
 
-        <div className="flex items-center justify-between gap-3 px-5 pb-5 pt-3">
-          <IconButton label="Previous step" onClick={() => go(page - 1)} disabled={page === 0} className="disabled:opacity-30">
-            <ChevronLeftIcon size={18} />
+        <div className="flex items-center justify-between gap-3 px-4 pb-5 pt-3 border-t-2 border-dashed border-px-dim">
+          <IconButton label="Paso anterior" onClick={() => go(page - 1)} disabled={page === 0}>
+            <ChevronLeftIcon size={16} />
           </IconButton>
 
-          <div className="flex items-center gap-1.5" role="group" aria-label="Guide steps">
+          <div className="flex items-center gap-1" role="group" aria-label="Pasos de la guía">
             {STEPS.map((s, i) => (
               <button
                 key={s.title}
                 type="button"
                 onClick={() => go(i)}
-                aria-label={`Step ${i + 1}: ${s.title}`}
+                aria-label={`Paso ${i + 1}: ${s.title}`}
                 aria-current={i === page ? 'step' : undefined}
-                className="grid place-items-center h-6 min-w-4 px-[3px] rounded-full"
+                className="grid place-items-center size-6"
               >
-                <motion.span
-                  className={cx('block h-1.5 rounded-full', i === page ? 'bg-label' : 'bg-fill-strong')}
-                  animate={{ width: i === page ? 18 : 6 }}
-                  transition={spring}
+                <span
+                  className={cx('block size-3 border-2', i === page ? 'bg-px-yellow border-px-yellow' : 'border-px-dim')}
                 />
               </button>
             ))}
@@ -276,8 +273,8 @@ export function Tutorial({ open, onClose, finishLabel = 'Get started' }: Tutoria
               {finishLabel}
             </Button>
           ) : (
-            <Button variant="primary" onClick={() => go(page + 1)} data-primary aria-label="Next step">
-              Next <ChevronRightIcon size={16} />
+            <Button variant="primary" onClick={() => go(page + 1)} data-primary aria-label="Siguiente paso">
+              Siguiente <ChevronRightIcon size={8} />
             </Button>
           )}
         </div>

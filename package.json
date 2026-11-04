@@ -1,0 +1,38 @@
+{
+  "name": "-lostiravida",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "vite build",
+    "build:analyze": "vite build --outDir dist --emptyOutDir && du -sh dist",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "type-check": "tsc --noEmit",
+    "test": "bash scripts/run-tests.sh run",
+    "test:watch": "bash scripts/run-tests.sh"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.3.4",
+    "motion": "^14.9.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "typescript": "^7.0.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.4",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "autoprefixer": "^10.6.2",
+    "esbuild": "^0.28.2",
+    "oxlint": "^1.89.0",
+    "postcss": "^8.5.32",
+    "tailwindcss": "^4.3.4",
+    "terser": "^5.51.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.1.0"
+  }
+}

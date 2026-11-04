@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/mission-hero.png" alt="Puesto Marte: cuatro astronautas operando un hábitat marciano en pixel art" width="100%" />
+<img src="docs/assets/mission-hero.gif" alt="GIF 8-BIT panorámico del puesto marciano: cuatro astronautas, balizas y consolas animadas" width="100%" />
 
 # PUESTO MARTE
 
@@ -28,7 +28,7 @@ No es un tablero estático: el hábitat está vivo. Los personajes 8-BIT patrull
 
 <div align="center">
 
-<img src="docs/assets/mission-loop.gif" alt="Animación 8-BIT del equipo trabajando dentro del hábitat marciano" width="800" />
+<img src="docs/assets/mission-loop.gif" alt="GIF 8-BIT de cerca: una astronauta repara una máquina con chispas mientras el equipo trabaja en el laboratorio y el invernadero" width="800" />
 
 </div>
 

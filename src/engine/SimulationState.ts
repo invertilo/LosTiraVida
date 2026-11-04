@@ -5,29 +5,52 @@ import {
   LocationType,
   ResourceAllocation,
   AstronautRole,
+  Difficulty,
+  ActiveEffect,
+  EventEffectSpec,
+  SystemHealth,
+  SystemStatus,
 } from './types';
-import { Physics } from './Physics';
+import { Physics, EffectModifiers, NO_EFFECTS } from './Physics';
 import { EventSystem } from './Events';
-import { LUNAR_PHYSICS, MARS_PHYSICS, LUNAR_ENVIRONMENT, MARS_ENVIRONMENT } from './NASAData';
+import {
+  LUNAR_PHYSICS,
+  MARS_PHYSICS,
+  LUNAR_ENVIRONMENT,
+  MARS_ENVIRONMENT,
+  DIFFICULTY_SETTINGS,
+  CREW_MODIFIERS,
+  FOOD_PRODUCTION,
+  POWER_SYSTEM,
+} from './NASAData';
+
+const ALLOCATION_KEYS = ['lifeSupportPower', 'radiationShieldPower', 'foodProductionPower'] as const;
+type AllocationKey = (typeof ALLOCATION_KEYS)[number];
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+const SEVERITY: Record<SystemStatus, number> = { operational: 0, degraded: 1, critical: 2, offline: 3 };
 
 export class MissionSimulator {
   private state: SimulationState;
   private physics: Physics;
   private events: EventSystem;
   private dayNightCycle: number;
+  private difficulty: Difficulty;
+  private nextEffectId = 1;
 
-  constructor(location: LocationType, crewCount: number = 4) {
+  constructor(location: LocationType, crewCount: number = 4, difficulty: Difficulty = 'normal') {
     const isMoon = location === 'moon';
+    this.difficulty = difficulty in DIFFICULTY_SETTINGS ? difficulty : 'normal';
+    const diff = DIFFICULTY_SETTINGS[this.difficulty];
     this.dayNightCycle = isMoon ? LUNAR_ENVIRONMENT.day_night_cycle_hours : MARS_ENVIRONMENT.day_night_cycle_hours;
 
     this.physics = new Physics(isMoon ? LUNAR_PHYSICS : MARS_PHYSICS);
-    this.events = new EventSystem();
+    this.events = new EventSystem(diff.eventRateMultiplier);
 
     // Create crew with varied roles
     const roles: AstronautRole[] = ['commander', 'engineer', 'scientist', 'doctor'];
     const crew = Array.from({ length: crewCount }, (_, i) => ({
       id: `crew_${i}`,
-      name: ['Alex', 'Jordan', 'Casey', 'Morgan', 'Taylor', 'Riley'][i],
+      name: ['Alex', 'Jordan', 'Casey', 'Morgan', 'Taylor', 'Riley'][i] ?? `Crew ${i + 1}`,
       role: roles[i % roles.length],
       morale: 75,
       stress: 25,
@@ -41,10 +64,10 @@ export class MissionSimulator {
       hourOfDay: 0,
       crew,
       resources: {
-        oxygen: 500, // kg - enough for ~600 person-days
-        water: 3000, // liters - enough for ~800 person-days
-        food: 1000, // kg dry mass - enough for ~1600 person-days
-        power: 10, // kWh - half of battery capacity
+        oxygen: 500 * diff.resourceMultiplier, // kg - enough for ~600 person-days (normal)
+        water: 3000 * diff.resourceMultiplier, // liters - enough for ~800 person-days (normal)
+        food: 1000 * diff.resourceMultiplier, // kg dry mass (normal)
+        power: POWER_SYSTEM.battery_capacity_kwh * diff.startingPowerFraction, // kWh (normal: half of capacity)
         co2_stored: 0,
       },
       systems: {
@@ -65,9 +88,122 @@ export class MissionSimulator {
       eventLog: [],
       missionSuccess: null,
       radiationExposure: 0,
-      difficulty: 'normal',
+      difficulty: this.difficulty,
       activeEffects: [],
     };
+  }
+
+  /** Modifiers contributed by all active events (1 = no change). */
+  private effectModifiers(): EffectModifiers {
+    const m: EffectModifiers = { ...NO_EFFECTS };
+    for (const e of this.state.activeEffects) {
+      switch (e.kind) {
+        case 'dust_storm': m.solar *= 1 - e.magnitude; break;
+        case 'equipment_failure': {
+          const key = e.system === 'radiationShield' ? 'shield' : e.system === 'foodProduction' ? 'food' : e.system;
+          if (key) m[key] *= 1 - e.magnitude;
+          break;
+        }
+        case 'water_leak': m.waterLeakPerHour += e.magnitude / 24; break; // litres per Earth day
+        case 'radiation_spike': m.radiation *= e.magnitude; break;
+        case 'crop_disease': m.food = 0; break;
+        case 'communication_loss': break; // morale only
+      }
+    }
+    return m;
+  }
+
+  /**
+   * Apply an event's simulation effect. Called automatically for generated events; also public so
+   * tests and scripted scenarios can trigger effects directly. Re-triggering an active effect refreshes it
+   * instead of stacking.
+   */
+  applyEventEffect(spec: EventEffectSpec, title: string = spec.kind): ActiveEffect {
+    let duration = spec.durationHours;
+    if (spec.kind === 'crop_disease' || duration <= 0) {
+      // "Current harvest cycle": time left until the next harvest boundary
+      const cycleHours = FOOD_PRODUCTION.growth_cycle_days * 24;
+      duration = cycleHours - (this.elapsedHours() % cycleHours);
+    }
+    duration = Math.max(1, duration);
+
+    const existing = this.state.activeEffects.find(e => e.kind === spec.kind && e.system === spec.system);
+    if (existing) {
+      existing.remainingHours = Math.max(existing.remainingHours, duration);
+      existing.durationHours = Math.max(existing.durationHours, duration);
+      existing.magnitude = Math.max(existing.magnitude, spec.magnitude);
+      this.refreshSystemStatus();
+      return existing;
+    }
+
+    const effect: ActiveEffect = { ...spec, id: this.nextEffectId++, title, durationHours: duration, remainingHours: duration };
+    if (spec.kind === 'communication_loss') {
+      effect.moraleApplied = spec.magnitude;
+      this.state.crew.forEach(c => (c.morale = clamp(c.morale - spec.magnitude, 0, 100)));
+    }
+    this.state.activeEffects.push(effect);
+    this.refreshSystemStatus();
+    return effect;
+  }
+
+  private elapsedHours(): number {
+    return (this.state.dayNumber - 1) * this.dayNightCycle + this.state.hourOfDay;
+  }
+
+  /** Repair speed multiplier from crew assigned to maintenance (1 = nobody assigned). */
+  private repairRate(): number {
+    let rate = 1;
+    for (const role of this.state.allocation.maintenancePersonnel) {
+      const member = this.state.crew.find(c => c.role === role && c.healthStatus !== 'critical');
+      if (member) rate += CREW_MODIFIERS[role]?.repair_speed_multiplier ?? 1;
+    }
+    return rate;
+  }
+
+  /** Count down active effects by one hour and drop the ones that ended. */
+  private tickEffects(): void {
+    const rate = this.repairRate();
+    const kept: ActiveEffect[] = [];
+    for (const e of this.state.activeEffects) {
+      const repairable = e.kind === 'equipment_failure' || e.kind === 'water_leak';
+      e.remainingHours -= repairable ? rate : 1;
+      if (e.remainingHours > 0) {
+        kept.push(e);
+        continue;
+      }
+      if (e.moraleApplied) {
+        this.state.crew.forEach(c => (c.morale = clamp(c.morale + e.moraleApplied!, 0, 100)));
+      }
+      this.state.eventLog.push({
+        timestamp: { day: this.state.dayNumber, hour: this.state.hourOfDay },
+        type: 'success',
+        title: `Resolved: ${e.title}`,
+        description: 'The effect has ended and normal operations resume.',
+      });
+    }
+    this.state.activeEffects = kept;
+    this.refreshSystemStatus();
+  }
+
+  private refreshSystemStatus(): void {
+    const sys: SystemHealth = {
+      lifeSupport: 'operational', power: 'operational', radiationShield: 'operational',
+      foodProduction: 'operational', communications: 'operational', habitatStructure: 'operational',
+    };
+    const raise = (k: keyof SystemHealth, st: SystemStatus) => {
+      if (SEVERITY[st] > SEVERITY[sys[k]]) sys[k] = st;
+    };
+    for (const e of this.state.activeEffects) {
+      switch (e.kind) {
+        case 'dust_storm': raise('power', e.magnitude >= 0.6 ? 'critical' : 'degraded'); break;
+        case 'equipment_failure': if (e.system) raise(e.system, e.magnitude >= 0.3 ? 'critical' : 'degraded'); break;
+        case 'water_leak': raise('lifeSupport', 'degraded'); break;
+        case 'radiation_spike': raise('radiationShield', 'degraded'); break;
+        case 'crop_disease': raise('foodProduction', 'offline'); break;
+        case 'communication_loss': raise('communications', 'offline'); break;
+      }
+    }
+    this.state.systems = sys;
   }
 
   // Update simulation by one hour
@@ -83,6 +219,10 @@ export class MissionSimulator {
 
     this.state.isDay = this.state.hourOfDay < this.dayNightCycle / 2;
 
+    // Active events modify this hour's physics
+    const mods = this.effectModifiers();
+    const diff = DIFFICULTY_SETTINGS[this.difficulty];
+
     // Update resources
     this.state.resources = this.physics.updateResources(
       this.state.resources,
@@ -90,15 +230,20 @@ export class MissionSimulator {
       this.state.allocation,
       this.state.isDay,
       this.state.hourOfDay,
-      this.dayNightCycle
+      this.dayNightCycle,
+      mods
     );
 
     // Update radiation exposure
     const radiationThisHour = this.physics.calculateRadiationExposure(
       this.state.hourOfDay,
-      this.state.allocation.radiationShieldPower
+      this.state.allocation.radiationShieldPower,
+      mods
     );
-    this.state.radiationExposure += radiationThisHour;
+    this.state.radiationExposure += radiationThisHour * diff.radiationMultiplier;
+
+    // Count down events (after they affected this hour)
+    this.tickEffects();
 
     // Update crew morale and stress
     this.updateCrewStatus();
@@ -107,6 +252,7 @@ export class MissionSimulator {
     const event = this.events.generateEvent(this.state, Math.random);
     if (event) {
       this.state.eventLog.push(event);
+      if (event.effect) this.applyEventEffect(event.effect, event.title);
     }
 
     // Morale event
@@ -125,7 +271,7 @@ export class MissionSimulator {
       this.state.eventLog.push({
         timestamp: { day: this.state.dayNumber, hour: this.state.hourOfDay },
         type: 'failure',
-        title: 'Mission Failed',
+        title: failureCheck.title ?? 'Mission Failed',
         description: failureCheck.reason,
       });
     }
@@ -141,7 +287,7 @@ export class MissionSimulator {
           timestamp: { day: this.state.dayNumber, hour: this.state.hourOfDay },
           type: 'failure',
           title: 'Mission Incomplete',
-          description: 'The crew survived the year, but resources, radiation or crew health fell short of mission goals.',
+          description: this.shortfallReason(),
         });
         return;
       }
@@ -150,12 +296,24 @@ export class MissionSimulator {
         timestamp: { day: this.state.dayNumber, hour: this.state.hourOfDay },
         type: 'success',
         title: 'Mission Complete!',
-        description: 'All crew survived a full year on the outpost. Mission success!',
+        description: `All ${this.state.crew.length} crew survived 365 Earth days with ${this.state.radiationExposure.toFixed(1)} mSv of radiation (limit ${this.physics['constants'].radiation_limit_mSv_per_year} mSv). Mission success!`,
       });
     }
   }
 
+  /** Why a full year survived still counts as a failure. */
+  private shortfallReason(): string {
+    const { resources: r, crew } = this.state;
+    const parts: string[] = [];
+    if (r.oxygen <= 10) parts.push(`oxygen reserve too low (${r.oxygen.toFixed(0)} kg, need over 10)`);
+    if (r.water <= 50) parts.push(`water reserve too low (${r.water.toFixed(0)} L, need over 50)`);
+    if (r.food <= 50) parts.push(`food reserve too low (${r.food.toFixed(0)} kg, need over 50)`);
+    if (!crew.some(c => c.healthStatus !== 'critical')) parts.push('no crew member was fit at the end');
+    return `The crew survived the year, but the outpost was not left sustainable: ${parts.join('; ') || 'mission goals were not met'}.`;
+  }
+
   private updateCrewStatus(): void {
+    const repairing = this.state.activeEffects.some(e => e.kind === 'equipment_failure' || e.kind === 'water_leak');
     this.state.crew.forEach(astronaut => {
       // Stress increases naturally, decreases with good conditions
       let stressChange = 0.1; // base increase per hour
@@ -172,6 +330,11 @@ export class MissionSimulator {
       if (this.state.resources.oxygen < 100) stressChange += 0.2;
       if (this.state.resources.water < 100) stressChange += 0.2;
       if (this.state.resources.food < 50) stressChange += 0.15;
+
+      // Maintenance crew working on an active repair is under extra strain
+      if (repairing && this.state.allocation.maintenancePersonnel.includes(astronaut.role)) {
+        stressChange += 0.05 * (CREW_MODIFIERS[astronaut.role]?.work_stress_multiplier ?? 1);
+      }
 
       // Stress from radiation
       if (this.state.radiationExposure > this.physics['constants'].radiation_limit_mSv_per_year * 0.8) {
@@ -203,24 +366,86 @@ export class MissionSimulator {
   }
 
   // Player actions
+  /**
+   * Update power allocation. Every value is forced into 0-100 (non-finite values are ignored) and the
+   * three shares always sum to at most 100. When the total would exceed 100, shares the caller did NOT
+   * change are reduced first; if the changed shares alone exceed 100 they are scaled down proportionally.
+   */
   setResourceAllocation(allocation: Partial<ResourceAllocation>): void {
-    this.state.allocation = { ...this.state.allocation, ...allocation };
-    // Normalize percentages
-    const sum = this.state.allocation.lifeSupportPower + this.state.allocation.radiationShieldPower + this.state.allocation.foodProductionPower;
-    if (sum > 100) {
-      this.state.allocation.lifeSupportPower = Math.round((this.state.allocation.lifeSupportPower / sum) * 100);
-      this.state.allocation.radiationShieldPower = Math.round((this.state.allocation.radiationShieldPower / sum) * 100);
-      this.state.allocation.foodProductionPower = 100 - this.state.allocation.lifeSupportPower - this.state.allocation.radiationShieldPower;
+    const next = { ...this.state.allocation };
+    const changed: AllocationKey[] = [];
+    for (const key of ALLOCATION_KEYS) {
+      const v = allocation[key];
+      if (typeof v === 'number' && Number.isFinite(v)) {
+        next[key] = clamp(Math.round(v), 0, 100);
+        changed.push(key);
+      }
     }
+    const total = ALLOCATION_KEYS.reduce((t, k) => t + next[k], 0);
+    if (total > 100) {
+      const others = ALLOCATION_KEYS.filter(k => !changed.includes(k));
+      const changedSum = changed.reduce((t, k) => t + next[k], 0);
+      const othersSum = others.reduce((t, k) => t + next[k], 0);
+      if (changedSum >= 100 || othersSum === 0) {
+        this.scaleTo(next, changed, 100);
+        others.forEach(k => (next[k] = 0));
+      } else {
+        this.scaleTo(next, others, 100 - changedSum);
+      }
+    }
+    this.state.allocation = {
+      ...next,
+      maintenancePersonnel: this.validMaintenance(allocation.maintenancePersonnel ?? next.maintenancePersonnel),
+    };
   }
 
-  assignCrew(role: AstronautRole, assignment: 'maintenance' | 'rest'): void {
-    if (assignment === 'maintenance') {
-      const crew = this.state.crew.find(c => c.role === role && !this.state.allocation.maintenancePersonnel.includes(c.id as any));
-      if (crew) this.state.allocation.maintenancePersonnel.push(role);
-    } else {
-      this.state.allocation.maintenancePersonnel = this.state.allocation.maintenancePersonnel.filter(r => r !== role);
+  /** Scale `keys` proportionally so they sum to exactly `target` (largest-remainder rounding). */
+  private scaleTo(a: ResourceAllocation, keys: AllocationKey[], target: number): void {
+    const sum = keys.reduce((t, k) => t + a[k], 0);
+    if (sum <= 0 || keys.length === 0) return;
+    const exact = keys.map(k => (a[k] / sum) * target);
+    const floors = exact.map(Math.floor);
+    let left = target - floors.reduce((t, v) => t + v, 0);
+    const order = exact.map((v, i) => ({ i, r: v - floors[i] })).sort((x, y) => y.r - x.r);
+    for (const { i } of order) {
+      if (left <= 0) break;
+      floors[i] += 1;
+      left -= 1;
     }
+    keys.forEach((k, i) => (a[k] = floors[i]));
+  }
+
+  /** Keep only roles that exist in the crew, no more of a role than there are crew members of it. */
+  private validMaintenance(roles: AstronautRole[]): AstronautRole[] {
+    const counts = new Map<AstronautRole, number>();
+    this.state.crew.forEach(c => counts.set(c.role, (counts.get(c.role) ?? 0) + 1));
+    const used = new Map<AstronautRole, number>();
+    return roles.filter(role => {
+      const n = used.get(role) ?? 0;
+      if (n >= (counts.get(role) ?? 0)) return false;
+      used.set(role, n + 1);
+      return true;
+    });
+  }
+
+  /**
+   * Put one crew member of `role` on maintenance (repairs events faster, costs stress) or back to rest.
+   * Returns false if the request was invalid (no such crew member / all already assigned / crew critical).
+   */
+  assignCrew(role: AstronautRole, assignment: 'maintenance' | 'rest'): boolean {
+    const list = this.state.allocation.maintenancePersonnel;
+    if (assignment === 'rest') {
+      const i = list.indexOf(role);
+      if (i === -1) return false;
+      list.splice(i, 1);
+      return true;
+    }
+    if (assignment !== 'maintenance') return false;
+    const fit = this.state.crew.filter(c => c.role === role && c.healthStatus !== 'critical').length;
+    const assigned = list.filter(r => r === role).length;
+    if (assigned >= fit) return false;
+    list.push(role);
+    return true;
   }
 
   // Getters

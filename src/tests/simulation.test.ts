@@ -168,9 +168,9 @@ describe('MissionSimulator initialisation', () => {
     expect(s.getResources().oxygen).toBe(500);
     expect(s.getState().crew[0].morale).toBe(75);
   });
-  it('crew sizes 1..6 get names; sizes > 6 produce undefined names (KNOWN ISSUE)', () => {
+  it('crew sizes 1..6 get names; sizes > 6 get fallback names (FIXED)', () => {
     expect(new MissionSimulator('moon', 6).getState().crew.every(c => c.name)).toBe(true);
-    expect(new MissionSimulator('moon', 7).getState().crew[6].name).toBeUndefined();
+    expect(new MissionSimulator('moon', 7).getState().crew[6].name).toBe('Crew 7');
   });
 });
 

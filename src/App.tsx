@@ -6,6 +6,7 @@ import { DIFFICULTY_SETTINGS, LUNAR_ENVIRONMENT, MARS_ENVIRONMENT, POWER_SYSTEM 
 import { snap, snapFast, snapPop } from './lib/motion';
 import { ROLE_LABEL } from './lib/mission';
 import { readHiScore } from './lib/score';
+import { readMissionSave, writeMissionSave } from './engine/save';
 import { pad, ROLE_TINT } from './lib/ui';
 import { Backdrop, Scanlines } from './components/Backdrop';
 import { OutpostDashboard } from './components/OutpostDashboard';
@@ -73,6 +74,7 @@ export default function App() {
   const [difficulty, setDifficulty] = useState<Difficulty>('normal');
   const [missionKey, setMissionKey] = useState(0);
   const [tutorialOpen, setTutorialOpen] = useState(false);
+  const [savedGame, setSavedGame] = useState(() => readMissionSave());
 
   const openTutorial = useCallback(() => setTutorialOpen(true), []);
   const closeTutorial = useCallback(() => {
@@ -83,8 +85,21 @@ export default function App() {
   const begin = () => {
     // SFX: "game start" fanfare, 4 rising square-wave notes
     setMissionKey((k) => k + 1);
+    setSavedGame(null);
+    writeMissionSave(null);
     setPhase('mission');
     if (!readSeen()) setTimeout(() => setTutorialOpen(true), 500);
+  };
+
+  const continueMission = () => {
+    const save = readMissionSave();
+    if (!save) { setSavedGame(null); return; }
+    setLocation(save.state.location);
+    setCrewCount(save.state.crew.length);
+    setDifficulty(save.state.difficulty);
+    setSavedGame(save);
+    setMissionKey((k) => k + 1);
+    setPhase('mission');
   };
 
   useEffect(() => {
@@ -105,6 +120,14 @@ export default function App() {
               setDifficulty={setDifficulty}
               onBegin={begin}
               onOpenTutorial={openTutorial}
+              canContinue={!!savedGame}
+              onContinue={continueMission}
+              onDeleteSave={() => {
+                if (window.confirm('¿Eliminar la partida guardada? Esta acción no se puede deshacer.')) {
+                  writeMissionSave(null);
+                  setSavedGame(null);
+                }
+              }}
             />
           </motion.div>
         ) : (
@@ -119,9 +142,10 @@ export default function App() {
               location={location}
               crewCount={crewCount}
               difficulty={difficulty}
-              onExit={() => setPhase('setup')}
+              onExit={() => { setSavedGame(readMissionSave()); setPhase('setup'); }}
               onOpenTutorial={openTutorial}
               tutorialOpen={tutorialOpen}
+              savedGame={savedGame}
             />
           </motion.div>
         )}
@@ -148,9 +172,12 @@ interface SetupProps {
   setDifficulty: (d: Difficulty) => void;
   onBegin: () => void;
   onOpenTutorial: () => void;
+  canContinue: boolean;
+  onContinue: () => void;
+  onDeleteSave: () => void;
 }
 
-function Setup({ location, setLocation, crewCount, setCrewCount, difficulty, setDifficulty, onBegin, onOpenTutorial }: SetupProps) {
+function Setup({ location, setLocation, crewCount, setCrewCount, difficulty, setDifficulty, onBegin, onOpenTutorial, canContinue, onContinue, onDeleteSave }: SetupProps) {
   const crewLabelId = useId();
   const dest = DESTINATIONS[location];
   const [hiScore] = useState(readHiScore);
@@ -321,6 +348,10 @@ function Setup({ location, setLocation, crewCount, setCrewCount, difficulty, set
               <Button variant="primary" size="lg" onClick={onBegin} className="w-full">
                 <PlayIcon size={16} /> Iniciar misión a {dest.name}
               </Button>
+              {canContinue && <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <Button variant="secondary" onClick={onContinue} className="w-full">Continuar misión guardada</Button>
+                <Button variant="plain" onClick={onDeleteSave} className="w-full">Eliminar partida guardada</Button>
+              </div>}
               <Button variant="plain" onClick={onOpenTutorial} className="w-full">
                 Cómo jugar
               </Button>

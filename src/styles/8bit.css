@@ -7,6 +7,86 @@
 
 @layer components {
 
+.dashboard-tabs {
+  display: flex; gap: 4px; overflow-x: auto; overscroll-behavior-inline: contain;
+  padding: 10px 2px 8px; scrollbar-width: thin; border-bottom: 3px solid var(--px-dim);
+}
+.dashboard-tab {
+  position: relative; flex: 0 0 auto; min-height: 42px; padding: 8px 12px;
+  border: 3px solid var(--px-dim); background: var(--px-black); color: var(--px-dim);
+  font-family: var(--font-pixel); font-size: .58rem; cursor: pointer;
+}
+.dashboard-tab[aria-selected="true"] { color: var(--px-black); background: var(--px-cyan); border-color: var(--px-white); box-shadow: 3px 3px 0 var(--px-black); }
+.dashboard-tab:focus-visible { outline: 3px solid var(--px-yellow); outline-offset: 3px; z-index: 2; }
+.dashboard-tab.has-alert { border-color: var(--px-red); color: var(--px-red); }
+.dashboard-tab[aria-selected="true"].has-alert { background: var(--px-red); color: var(--px-black); }
+.tab-badge { display:inline-grid; place-items:center; min-width:18px; height:18px; margin-left:7px; padding:0 4px; background:var(--px-yellow); color:var(--px-black); }
+.tab-alert-dot { display:inline-block; width:8px; height:8px; margin-left:7px; background:var(--px-red); box-shadow:0 0 0 2px var(--px-black); }
+.dashboard-grid > [role="tabpanel"] { min-width:0; }
+.dashboard-grid > [role="tabpanel"]:focus-visible { outline:3px solid var(--px-yellow); outline-offset:4px; }
+.tab-content-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; align-items:start; }
+.tab-content-grid > * { min-width:0; }
+.objective-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.objective-item { padding:10px; border:2px solid var(--px-dim); background:var(--px-black); }
+.objective-head { display:flex; justify-content:space-between; gap:8px; font: .56rem/1.5 var(--font-pixel); color:var(--px-white); }
+.objective-item p { margin-top:6px; color:var(--px-dim); font:1rem/1.2 var(--font-terminal); }
+.objective-track { height:8px; margin-top:8px; border:2px solid var(--px-dim); background:var(--px-navy); }
+.objective-track i { display:block; height:100%; background:var(--px-green); }
+.result-objectives { display:grid; gap:6px; max-height:240px; overflow:auto; }
+.result-objectives li { display:grid; grid-template-columns:22px 1fr auto; gap:8px; align-items:center; padding:7px; border:2px solid var(--px-dim); text-align:left; }
+.result-objectives li.completed { border-color:var(--px-green); }
+.result-objectives li.failed { border-color:var(--px-red); }
+.result-objectives li > span:first-child { font:1rem var(--font-pixel); color:var(--px-green); }
+.result-objectives li.failed > span:first-child { color:var(--px-red); }
+.result-objectives strong,.result-objectives b { font:.5rem/1.35 var(--font-pixel); color:var(--px-white); }
+.result-objectives small { display:block; margin-top:3px; color:var(--px-dim); font: .95rem/1.15 var(--font-terminal); }
+.result-objectives b { color:var(--px-green); }
+.result-objectives .failed b { color:var(--px-red); }
+.sound-toggle { min-height:36px; padding:6px 8px; font-size:.48rem; }
+
+.exterior-scene { position:relative; overflow:hidden; border:4px solid var(--px-black); background:#161b32; }
+.exterior-scene svg { display:block; width:100%; height:auto; min-height:220px; }
+.exo-sky { fill:#222b54; }.exo-ground { fill:#8c4637; }.exo-ridge { fill:#763c38; }.exo-ridge-far { fill:#a85b42; }
+.exo-sun { fill:#f7c94c; }.exo-earth { fill:#4e9ed2; stroke:#d3edff; stroke-width:4; }
+.moon .exo-sky { fill:#070a15; }.moon .exo-ground { fill:#666d7b; }.moon .exo-ridge { fill:#424959; }.moon .exo-ridge-far { fill:#333a49; }
+.is-night .exo-sun { opacity:0; }.is-night.mars .exo-sky { fill:#101729; }.is-night.mars .exo-ground { fill:#432f3c; }
+.exo-rocks { fill:#542f30; }.moon .exo-rocks { fill:#39404d; }
+.has-storm .exo-sky { fill:#312c3d; }.has-storm .exo-panels { opacity:.55; filter:brightness(.55); }
+.exo-lander { fill:#d9e6ed; stroke:#121727; stroke-width:5; }.exo-window { fill:#39c4d7; }
+.exo-base { fill:#c9d5dc; stroke:#111827; stroke-width:5; }.exo-windows { fill:#253454; }.exo-seams { stroke:#8499a6; stroke-width:4; }
+.exo-pipe { fill:none; stroke:#dfb84b; stroke-width:8; }.exo-greenhouse { fill:#1d3e47; }.exo-plants { fill:none; stroke:#68ca75; stroke-width:5; }
+.exo-panels { fill:#245477; stroke:#111827; stroke-width:5; }.exo-grid { fill:none; stroke:#67c9ed; stroke-width:3; }.exo-stand { fill:none; stroke:#d4dce0; stroke-width:6; }
+.exo-panels.is-broken { fill:#49343d; }.exo-panels.is-broken .exo-grid { stroke:#ef6060; }
+.exo-antenna { fill:none; stroke:#e2eaf0; stroke-width:5; }.exo-antenna.is-offline { stroke:#ff5555; }
+.has-crop-disease .exo-plants { stroke:#9a573a; }.mission-ended .exo-readout { color:#f7c94c; }
+.exo-eva { fill:#fff; stroke:#111827; stroke-width:4; }.exo-dust { fill:none; stroke:#ffc170; stroke-width:7; stroke-dasharray:24 17; animation:dust8 1.5s steps(4,end) infinite; }
+.exo-rad { fill:#d37cff; animation:rad8 1.2s steps(2,end) infinite; }
+.exo-readout { display:flex; justify-content:space-between; gap:8px; padding:8px 10px; background:var(--px-black); color:var(--px-cyan); font:.5rem var(--font-pixel); }
+.event-effects { position:fixed; inset:0; z-index:25; pointer-events:none; opacity:.16; }
+.event-resolution { position:fixed; inset:0; z-index:25; pointer-events:none; background:#39e37d; opacity:.18; animation:resolve8 .8s steps(2,end) forwards; }
+.event-effects > span { position:absolute; inset:0; background-image:radial-gradient(var(--event-color) 1px, transparent 1px); background-size:13px 13px; animation:overlay8 1.2s steps(3,end) infinite; }
+.event-dust { background:#8a4a1d; }.event-sparks { background:linear-gradient(90deg,transparent 49%,#fb3434 50%,transparent 51%); }.event-leak { background:#063956; }.event-radiation { background:#551477; }.event-crop { background:#493d12; }.event-static { background:#25354e; }
+.event-dust > span { background:repeating-linear-gradient(0deg,transparent 0 14px,var(--event-color) 14px 16px,transparent 16px 28px); animation:dust8 1.2s steps(4,end) infinite; }
+.event-sparks > span { background:radial-gradient(var(--event-color) 1px,transparent 2px); background-size:19px 17px; animation:overlay8 .18s steps(2,end) infinite; }
+.event-leak > span { background:repeating-linear-gradient(105deg,transparent 0 14px,var(--event-color) 15px 17px,transparent 18px 32px); animation:dust8 1.4s linear infinite; }
+.event-radiation > span { background:linear-gradient(90deg,transparent 42%,var(--event-color) 50%,transparent 58%); animation:radSweep8 1.4s steps(5,end) infinite; }
+.event-crop > span { background:radial-gradient(var(--event-color) 2px,transparent 3px); background-size:27px 23px; animation:overlay8 1.5s steps(3,end) infinite; }
+.event-static > span { background:repeating-linear-gradient(0deg,transparent 0 4px,var(--event-color) 5px,transparent 6px); animation:overlay8 .25s steps(2,end) infinite; }
+@keyframes dust8 { to { transform:translateX(-70px); } }
+@keyframes rad8 { 50% { opacity:.2; } }
+@keyframes overlay8 { 50% { opacity:.35; } }
+@keyframes resolve8 { to { opacity:0; } }
+@keyframes radSweep8 { to { background-position:100vw 0; } }
+
+@media (max-width: 700px) {
+  .tab-content-grid,.objective-list { grid-template-columns:1fr; }
+  .exterior-scene svg { min-height:180px; }
+  .sound-toggle { max-width:none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .event-effects, .event-effects *, .event-resolution, .exo-dust, .exo-rad { animation:none !important; }
+}
+
 /* Compact help that stays out of the way until the player asks for it. */
 .explain8 {
   color: var(--px-dim);
@@ -66,7 +146,7 @@
   .mission-brand svg { width: 30px; height: 30px; }
   .mission-brand .t-title { font-size: 0.65rem; }
   .mission-brand .t-small { font-size: 0.95rem; }
-  .mission-actions { grid-column: 2; grid-row: 1; gap: 4px; }
+  .mission-actions { grid-column: 1 / -1; grid-row: 3; justify-content: flex-end; gap: 6px; }
   .mission-actions .btn8 { min-height: 36px; height: 36px; padding-inline: 8px; }
   .mission-actions .btn8-icon { width: 36px; }
   .new-mission-label { display: none; }
@@ -74,7 +154,7 @@
   .mission-controls { grid-column: 1 / -1; grid-row: 2; width: 100%; }
   .controls8 { width: 100%; gap: 6px; }
   .controls8-play { width: 42px; height: 42px; flex: 0 0 42px; }
-  .controls8-speed { width: auto; flex: 1 1 auto; }
+  .controls8-speed { width: auto; min-width: 0; flex: 1 1 auto; }
   .controls8-reset { width: 42px; min-width: 42px; height: 42px; padding: 0; }
   .controls8-reset-label { display: none; }
   .active-effects-list { display: grid; grid-template-columns: 1fr; }

@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { Difficulty, LocationType, SimulationEvent } from '../engine/types';
+import type { SimulatorSaveData } from '../engine/SimulationState';
 import { useSimulation } from '../hooks/useSimulation';
 import { snapFast, snapPop } from '../lib/motion';
 import { Backdrop } from './Backdrop';
@@ -20,6 +21,10 @@ import { MissionResult } from './MissionResult';
 import { Planet } from './sprites';
 import { Button, IconButton } from './primitives';
 import { cx, SPEEDS } from '../lib/ui';
+import { DashboardTabs, type DashboardTab } from './DashboardTabs';
+import { ExteriorScene } from './ExteriorScene';
+import { MissionObjectives } from './MissionObjectives';
+import { EventEffectsLayer } from './EventEffectsLayer';
 import { CloseIcon, CriticalIcon, FailureIcon, QuestionIcon } from './icons';
 
 interface OutpostDashboardProps {
@@ -29,6 +34,7 @@ interface OutpostDashboardProps {
   onExit: () => void;
   onOpenTutorial: () => void;
   tutorialOpen: boolean;
+  savedGame?: SimulatorSaveData | null;
 }
 
 type Toast = { id: number; event: SimulationEvent };
@@ -41,13 +47,16 @@ function isTypingTarget(t: EventTarget | null) {
   return !!el.closest('input, textarea, select, [contenteditable="true"]');
 }
 
-export function OutpostDashboard({ location, crewCount, difficulty = 'normal', onExit, onOpenTutorial, tutorialOpen }: OutpostDashboardProps) {
-  const { state, isRunning, toggleRunning, speed, setSpeed, setAllocation, assignCrew, restart } = useSimulation(location, crewCount, difficulty);
+export function OutpostDashboard({ location, crewCount, difficulty = 'normal', onExit, onOpenTutorial, tutorialOpen, savedGame = null }: OutpostDashboardProps) {
+  const [pauseOnWarnings, setPauseOnWarnings] = useState(() => { try { return localStorage.getItem('outpost.pauseWarnings') === '1'; } catch { return false; } });
+  const { state, isRunning, toggleRunning, speed, setSpeed, setAllocation, assignCrew, restart } = useSimulation(location, crewCount, difficulty, savedGame, pauseOnWarnings);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [resultOpen, setResultOpen] = useState(false);
   const [restartRequest, setRestartRequest] = useState(0);
   const [announcement, setAnnouncement] = useState('');
   const [glitch, setGlitch] = useState(false);
+  const [activeTab, setActiveTab] = useState<DashboardTab>('exterior');
+  const [reviewedEvents, setReviewedEvents] = useState(savedGame?.state.eventLog.length ?? 0);
   const seenEvents = useRef(0);
 
   const ended = state?.missionSuccess !== null && state?.missionSuccess !== undefined;
@@ -121,7 +130,7 @@ export function OutpostDashboard({ location, crewCount, difficulty = 'normal', o
         if (target?.closest('button, [role="slider"], [role="radio"], a')) return;
         e.preventDefault();
         if (!ended) toggleRunning();
-      } else if (e.key === '1' || e.key === '2' || e.key === '3') {
+      } else if (/^[1-5]$/.test(e.key)) {
         setSpeed(SPEEDS[Number(e.key) - 1]);
       } else if (e.key === 'r' || e.key === 'R') {
         setRestartRequest((n) => n + 1);
@@ -153,6 +162,7 @@ export function OutpostDashboard({ location, crewCount, difficulty = 'normal', o
             <div className="min-w-0">
               <h1 className="t-title text-px-yellow truncate">Puesto {location === 'mars' ? 'Marte' : 'Lunar'}</h1>
               <p className="t-small text-px-dim truncate">
+                {state && `Día ${state.dayNumber} · ${Math.floor(state.hourOfDay).toString().padStart(2, '0')}:00 · `}
                 {crewCount} tripulantes ·{' '}
                 {isRunning ? (
                   <span className="text-px-green">En marcha {speed}X</span>
@@ -179,6 +189,10 @@ export function OutpostDashboard({ location, crewCount, difficulty = 'normal', o
           </div>
 
           <div className="mission-actions flex items-center gap-3 sm:ml-auto">
+            {state && <EventEffectsLayer state={state} />}
+            <button type="button" className="alert-indicator" onClick={() => setActiveTab('log')} aria-label={`${state.activeEffects.length} alertas activas; abrir bitácora`}>
+              <CriticalIcon size={16} /> <span>{state.activeEffects.length}</span>
+            </button>
             <IconButton label="Cómo jugar (?)" onClick={onOpenTutorial} aria-keyshortcuts="Shift+/">
               <QuestionIcon size={16} />
             </IconButton>
@@ -206,38 +220,20 @@ export function OutpostDashboard({ location, crewCount, difficulty = 'normal', o
       </div>
 
       <div className="mx-auto max-w-[1440px] p-2 sm:p-4">
-        <main
-          id="dashboard"
-          tabIndex={-1}
-          className={cx('dashboard-grid crt-frame p-3 sm:p-5 grid gap-5 md:grid-cols-2 lg:grid-cols-12 outline-none', glitch && 'glitch')}
-        >
-          <ActiveEffects state={state} onAssignCrew={assignCrew} disabled={ended} />
-          <div className="md:col-span-2 lg:col-span-12 min-w-0">
-            <HabitatScene state={state} isRunning={isRunning} index={0} />
-          </div>
-        {/* Top-left */}
-          <div className="md:col-span-2 lg:col-span-7 min-w-0 [&>section]:h-full">
-            <MissionStats state={state} index={1} />
-          </div>
-          {/* Top-right */}
-          <div className="md:col-span-2 lg:col-span-5 min-w-0 [&>section]:h-full">
-            <CrewStatus crew={state.crew} index={2} />
-          </div>
-          {/* Bottom-left */}
-          <div className="md:col-span-2 lg:col-span-7 grid gap-5 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 min-w-0 content-start">
-            <ResourceGauges state={state} index={3} />
-            <AllocationPanel
-              allocation={state.allocation}
-              onChange={setAllocation}
-              location={location}
-              crewCount={state.crew.length}
-              disabled={ended}
-              index={4}
-            />
-          </div>
-          {/* Bottom-right */}
-          <div className="md:col-span-2 lg:col-span-5 relative min-w-0 h-[480px] lg:h-auto lg:min-h-[480px] overflow-hidden">
-            <EventLog events={state.eventLog} location={location} index={5} className="absolute inset-0 overflow-hidden" />
+        <ActiveEffects state={state} onAssignCrew={assignCrew} disabled={ended} />
+        <DashboardTabs active={activeTab} onChange={tab => { setActiveTab(tab); if (tab === 'log') setReviewedEvents(state.eventLog.length); }} unread={Math.max(0, state.eventLog.length - reviewedEvents)} alerted={[
+          ...(state.systems.power !== 'operational' || state.systems.communications !== 'operational' ? ['exterior' as const] : []),
+          ...(state.systems.lifeSupport !== 'operational' || state.systems.foodProduction !== 'operational' ? ['habitat' as const] : []),
+          ...(state.systems.radiationShield !== 'operational' || state.systems.power !== 'operational' ? ['management' as const] : []),
+          ...(state.systems.lifeSupport !== 'operational' ? ['crew' as const] : []),
+        ]} />
+        <main id="dashboard" tabIndex={-1} className={cx('dashboard-grid crt-frame p-3 sm:p-5 grid gap-5 outline-none', glitch && 'glitch')}>
+          <div id="dashboard-panel" role="tabpanel" aria-labelledby={`tab-${activeTab}`} tabIndex={0}>
+            {activeTab === 'exterior' && <ExteriorScene state={state} />}
+            {activeTab === 'habitat' && <HabitatScene state={state} isRunning={isRunning} />}
+            {activeTab === 'management' && <div className="tab-content-grid"><MissionStats state={state} /><MissionObjectives state={state} /><ResourceGauges state={state} /><AllocationPanel allocation={state.allocation} onChange={setAllocation} location={location} crewCount={state.crew.length} disabled={ended} /></div>}
+            {activeTab === 'crew' && <CrewStatus crew={state.crew} />}
+            {activeTab === 'log' && <div className="tab-content-grid"><section className="tile8 px-4 py-3"><label className="t-body text-px-white flex items-center gap-3"><input type="checkbox" checked={pauseOnWarnings} onChange={event => { setPauseOnWarnings(event.target.checked); try { localStorage.setItem('outpost.pauseWarnings', event.target.checked ? '1' : '0'); } catch { /* optional preference */ } }} /> Pausar también ante advertencias</label></section><EventLog events={state.eventLog} location={location} /></div>}
           </div>
         </main>
       </div>

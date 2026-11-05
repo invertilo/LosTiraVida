@@ -1,20 +1,22 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { MissionSimulator } from '../engine/SimulationState';
+import type { SimulatorSaveData } from '../engine/SimulationState';
+import { writeMissionSave } from '../engine/save';
 import { SimulationState, LocationType, Difficulty, ResourceAllocation, AstronautRole } from '../engine/types';
 
-export function useSimulation(location: LocationType, crewCount: number = 4, difficulty: Difficulty = 'normal') {
+export function useSimulation(location: LocationType, crewCount: number = 4, difficulty: Difficulty = 'normal', savedGame: SimulatorSaveData | null = null, pauseOnWarnings = false) {
   const [state, setState] = useState<SimulationState | null>(null);
   const [isRunning, setIsRunning] = useState(false);
-  const [speed, setSpeed] = useState(1); // 1x, 2x, 4x
+  const [speed, setSpeed] = useState(1);
   const simulatorRef = useRef<MissionSimulator | null>(null);
 
   // Initialize simulator
   useEffect(() => {
-    const simulator = new MissionSimulator(location, crewCount, difficulty);
+    const simulator = savedGame ? MissionSimulator.restore(savedGame) : new MissionSimulator(location, crewCount, difficulty);
     simulatorRef.current = simulator;
     // eslint-disable-next-line react-hooks/exhaustive-deps
     setState(simulator.getState());
-  }, [location, crewCount, difficulty]);
+  }, [location, crewCount, difficulty, savedGame]);
 
   // Run simulation loop
   useEffect(() => {
@@ -25,27 +27,49 @@ export function useSimulation(location: LocationType, crewCount: number = 4, dif
 
       // One simulated hour per tick. Speed changes the cadence instead of batching
       // several hours into one render, so movement and alerts stay readable.
+      const before = simulatorRef.current.getEvents().length;
       simulatorRef.current.step();
 
-      setState(simulatorRef.current.getState());
+      const next = simulatorRef.current.getState();
+      setState(next);
+      const freshEvents = next.eventLog.slice(before);
+      if (freshEvents.length > 0) writeMissionSave(simulatorRef.current.serialize());
+      if (freshEvents.some((event) => event.type === 'critical' || event.type === 'failure' || (pauseOnWarnings && event.type === 'warning'))) {
+        setIsRunning(false);
+        writeMissionSave(simulatorRef.current.serialize());
+      }
 
       // Stop if mission ended
       if (!simulatorRef.current.isMissionRunning()) {
         setIsRunning(false);
+        writeMissionSave(null);
       }
     }, 1000 / speed); // 1X = one simulated hour per real second
 
     return () => clearInterval(interval);
-  }, [isRunning, speed]);
+  }, [isRunning, speed, pauseOnWarnings]);
+
+  useEffect(() => {
+    if (!isRunning || !simulatorRef.current) return;
+    const id = window.setInterval(() => {
+      if (simulatorRef.current?.isMissionRunning()) writeMissionSave(simulatorRef.current.serialize());
+    }, 5000);
+    return () => window.clearInterval(id);
+  }, [isRunning]);
 
   const toggleRunning = useCallback(() => {
-    setIsRunning((running) => !running);
+    setIsRunning((running) => {
+      const next = !running;
+      if (running && simulatorRef.current?.isMissionRunning()) writeMissionSave(simulatorRef.current.serialize());
+      return next;
+    });
   }, []);
 
   const setAllocation = useCallback((allocation: Partial<ResourceAllocation>) => {
     if (simulatorRef.current) {
       simulatorRef.current.setResourceAllocation(allocation);
       setState(simulatorRef.current.getState());
+      writeMissionSave(simulatorRef.current.serialize());
     }
   }, []);
 
@@ -53,6 +77,7 @@ export function useSimulation(location: LocationType, crewCount: number = 4, dif
     if (simulatorRef.current) {
       simulatorRef.current.assignCrew(role, assignment);
       setState(simulatorRef.current.getState());
+      writeMissionSave(simulatorRef.current.serialize());
     }
   }, []);
 
@@ -61,6 +86,7 @@ export function useSimulation(location: LocationType, crewCount: number = 4, dif
     const simulator = new MissionSimulator(location, crewCount, difficulty);
     simulatorRef.current = simulator;
     setState(simulator.getState());
+    writeMissionSave(simulator.serialize());
   }, [location, crewCount, difficulty]);
 
   return {
@@ -72,5 +98,6 @@ export function useSimulation(location: LocationType, crewCount: number = 4, dif
     setAllocation,
     assignCrew,
     restart,
+    saveNow: () => { if (simulatorRef.current?.isMissionRunning()) writeMissionSave(simulatorRef.current.serialize()); },
   };
 }

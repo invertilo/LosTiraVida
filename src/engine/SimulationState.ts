@@ -11,6 +11,7 @@ import {
   SystemHealth,
   SystemStatus,
 } from './types';
+import type { MissionObjective } from './types';
 import { Physics, EffectModifiers, NO_EFFECTS } from './Physics';
 import { EventSystem } from './Events';
 import {
@@ -24,6 +25,16 @@ import {
   FOOD_PRODUCTION,
   POWER_SYSTEM,
 } from './NASAData';
+import { evaluateMissionObjectives } from './objectives';
+
+export interface SimulatorSaveData {
+  schemaVersion: 1;
+  state: SimulationState;
+  nextEffectId: number;
+  eventCooldowns: Record<string, number>;
+}
+
+const SAVE_SCHEMA_VERSION = 1 as const;
 
 const ALLOCATION_KEYS = ['lifeSupportPower', 'radiationShieldPower', 'foodProductionPower'] as const;
 type AllocationKey = (typeof ALLOCATION_KEYS)[number];
@@ -93,7 +104,35 @@ export class MissionSimulator {
       radiationExposure: 0,
       difficulty: this.difficulty,
       activeEffects: [],
+      objectives: [],
+      outcome: null,
     };
+    this.state.objectives = this.evaluateObjectives(false);
+  }
+
+  static restore(save: SimulatorSaveData): MissionSimulator {
+    if (save?.schemaVersion !== SAVE_SCHEMA_VERSION || !save.state) throw new Error('Partida guardada incompatible');
+    const simulator = new MissionSimulator(save.state.location, save.state.crew.length, save.state.difficulty);
+    simulator.state = JSON.parse(JSON.stringify(save.state)) as SimulationState;
+    simulator.nextEffectId = save.nextEffectId;
+    simulator.events.restore(save.eventCooldowns ?? {});
+    return simulator;
+  }
+
+  serialize(): SimulatorSaveData {
+    return { schemaVersion: SAVE_SCHEMA_VERSION, state: this.getState(), nextEffectId: this.nextEffectId, eventCooldowns: this.events.serialize() };
+  }
+
+  private evaluateObjectives(final: boolean) {
+    return evaluateMissionObjectives(this.state, this.elapsedHours() / 24, this.physics['constants'].radiation_limit_mSv_per_year, final);
+  }
+
+  private finish(success: boolean, title: string, description: string, evaluatedObjectives?: MissionObjective[]): void {
+    if (this.state.missionSuccess !== null) return;
+    this.state.missionSuccess = success;
+    this.state.objectives = evaluatedObjectives ?? this.evaluateObjectives(true);
+    this.state.outcome = { success, objectives: this.state.objectives, elapsedEarthDays: this.elapsedHours() / 24 };
+    this.state.eventLog.push({ timestamp: { day: this.state.dayNumber, hour: this.state.hourOfDay }, type: success ? 'success' : 'failure', title, description });
   }
 
   /** Modifiers contributed by all active events (1 = no change). */
@@ -169,6 +208,7 @@ export class MissionSimulator {
     const kept: ActiveEffect[] = [];
     for (const e of this.state.activeEffects) {
       const repairable = e.kind === 'equipment_failure' || e.kind === 'water_leak';
+      if (repairable) e.hoursSavedByCrew = (e.hoursSavedByCrew ?? 0) + Math.max(0, rate - 1);
       e.remainingHours -= repairable ? rate : 1;
       if (e.remainingHours > 0) {
         kept.push(e);
@@ -181,7 +221,7 @@ export class MissionSimulator {
         timestamp: { day: this.state.dayNumber, hour: this.state.hourOfDay },
         type: 'success',
         title: `Resuelto: ${e.title}`,
-        description: 'El efecto terminó y se reanudan las operaciones normales.',
+        description: `El efecto terminó y se reanudan las operaciones normales. ${this.state.allocation.maintenancePersonnel.length ? `Participaron ${this.state.crew.filter(c => this.state.allocation.maintenancePersonnel.includes(c.role)).map(c => c.name).join(', ')}; la tripulación ahorró aproximadamente ${(e.hoursSavedByCrew ?? 0).toFixed(1)} h.` : 'La reparación se completó sin personal asignado.'}`,
       });
     }
     this.state.activeEffects = kept;
@@ -213,12 +253,11 @@ export class MissionSimulator {
   step(): void {
     if (this.state.missionSuccess !== null) return; // mission ended
 
-    // Advance time
-    this.state.hourOfDay += 1;
-    if (this.state.hourOfDay >= this.dayNightCycle) {
-      this.state.hourOfDay = 0;
-      this.state.dayNumber += 1;
-    }
+    // Derive the local sol clock from cumulative Earth hours. Mars' 24.6 h
+    // cycle must retain its fractional hour instead of dropping it at sol rollover.
+    const elapsedHours = this.elapsedHours() + 1;
+    this.state.dayNumber = Math.floor(elapsedHours / this.dayNightCycle) + 1;
+    this.state.hourOfDay = elapsedHours % this.dayNightCycle;
 
     this.state.isDay = this.state.hourOfDay < this.dayNightCycle / 2;
 
@@ -270,13 +309,8 @@ export class MissionSimulator {
     // Check mission status
     const failureCheck = this.physics.checkMissionFailure(this.state);
     if (failureCheck.failed) {
-      this.state.missionSuccess = false;
-      this.state.eventLog.push({
-        timestamp: { day: this.state.dayNumber, hour: this.state.hourOfDay },
-        type: 'failure',
-        title: failureCheck.title ?? 'Misión fallida',
-        description: failureCheck.reason,
-      });
+      this.finish(false, failureCheck.title ?? 'Misión fallida', failureCheck.reason);
+      return;
     }
 
     // Check mission success: one full Earth year (8760 h). A lunar "day" is 354 h long,
@@ -284,35 +318,20 @@ export class MissionSimulator {
     const elapsedEarthDays =
       ((this.state.dayNumber - 1) * this.dayNightCycle + this.state.hourOfDay) / 24;
     if (this.state.missionSuccess === null && elapsedEarthDays >= 365) {
-      if (!this.physics.checkMissionSuccess(this.state, elapsedEarthDays)) {
-        this.state.missionSuccess = false;
-        this.state.eventLog.push({
-          timestamp: { day: this.state.dayNumber, hour: this.state.hourOfDay },
-          type: 'failure',
-          title: 'Misión incompleta',
-          description: this.shortfallReason(),
-        });
-        return;
-      }
-      this.state.missionSuccess = true;
-      this.state.eventLog.push({
-        timestamp: { day: this.state.dayNumber, hour: this.state.hourOfDay },
-        type: 'success',
-        title: '¡Misión completa!',
-        description: `Los ${this.state.crew.length} tripulantes sobrevivieron 365 días terrestres con ${this.state.radiationExposure.toFixed(1)} mSv de radiación (límite ${this.physics['constants'].radiation_limit_mSv_per_year} mSv). ¡Misión exitosa!`,
-      });
+      const objectives = this.evaluateObjectives(true);
+      const success = objectives.every(objective => objective.status === 'completed');
+      this.finish(success, success ? '¡Misión completa!' : 'Misión incompleta', success
+        ? `La tripulación completó 365 días terrestres con ${this.state.radiationExposure.toFixed(1)} mSv de radiación. ¡Misión exitosa!`
+        : this.shortfallReason(objectives), objectives);
+    } else {
+      this.state.objectives = this.evaluateObjectives(false);
     }
   }
 
   /** Why a full year survived still counts as a failure. */
-  private shortfallReason(): string {
-    const { resources: r, crew } = this.state;
-    const parts: string[] = [];
-    if (r.oxygen <= 10) parts.push(`reserva de oxígeno demasiado baja (${r.oxygen.toFixed(0)} kg; se necesitan más de 10)`);
-    if (r.water <= 50) parts.push(`reserva de agua demasiado baja (${r.water.toFixed(0)} L; se necesitan más de 50)`);
-    if (r.food <= 50) parts.push(`reserva de comida demasiado baja (${r.food.toFixed(0)} kg; se necesitan más de 50)`);
-    if (!crew.some(c => c.healthStatus !== 'critical')) parts.push('ningún tripulante terminó en condiciones');
-    return `La tripulación sobrevivió el año, pero el puesto no quedó sostenible: ${parts.join('; ') || 'no se cumplieron los objetivos'}.`;
+  private shortfallReason(objectives: MissionObjective[]): string {
+    const unmet = objectives.filter(objective => objective.status === 'failed').map(objective => objective.explanation);
+    return `La misión terminó sin cumplir todos los objetivos: ${unmet.join('; ') || 'no se cumplieron los objetivos'}.`;
   }
 
   private updateCrewStatus(): void {

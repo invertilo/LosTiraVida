@@ -7,6 +7,7 @@ import {
   ResourceAllocation,
 } from './types';
 import { CREW_MODIFIERS, POWER_SYSTEM, FOOD_PRODUCTION, RADIATION_SHIELDING, LIFE_SUPPORT_DATA } from './NASAData';
+import { evaluateMissionObjectives } from './objectives';
 
 /** Multipliers produced by active events (1 = unaffected). */
 export interface EffectModifiers {
@@ -217,14 +218,7 @@ export class Physics {
   // Check mission success (full year survived with good decisions)
   checkMissionSuccess(state: SimulationState, dayNumber: number): boolean {
     if (dayNumber < 365) return false; // not complete
-
-    const { resources, radiationExposure, crew } = state;
-    const hasResources = resources.oxygen > 10 && resources.water > 50 && resources.food > 50;
-    // Success = stayed under NASA's 50 mSv annual limit (the old 80% margin was unreachable on the Moon)
-    const safeRadiation = radiationExposure < this.constants.radiation_limit_mSv_per_year;
-    // Crew alive and functioning: at least one member is not critical (all-critical already fails the mission)
-    const healthyCrew = crew.some(c => c.healthStatus !== 'critical');
-
-    return hasResources && safeRadiation && healthyCrew;
+    return evaluateMissionObjectives(state, dayNumber, this.constants.radiation_limit_mSv_per_year, true)
+      .every(objective => objective.status === 'completed');
   }
 }

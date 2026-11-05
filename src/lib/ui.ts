@@ -27,4 +27,4 @@ export const cx = (...c: Array<string | false | null | undefined>) => c.filter(B
 /** Zero-padded arcade counter: 42 → "000042". */
 export const pad = (n: number, width = 6) => String(Math.max(0, Math.floor(n))).padStart(width, '0');
 
-export const SPEEDS = [1, 2, 4] as const;
+export const SPEEDS = [1, 2, 4, 8, 16] as const;

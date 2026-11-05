@@ -23,6 +23,17 @@ export type EventKind =
   | 'communication_loss';
 
 export type AffectedSystem = 'lifeSupport' | 'power' | 'radiationShield' | 'foodProduction';
+export type ObjectiveStatus = 'pending' | 'completed' | 'failed';
+export interface MissionObjective {
+  id: 'duration' | 'crew' | 'radiation' | 'oxygen' | 'water' | 'food';
+  title: string;
+  status: ObjectiveStatus;
+  progress: number;
+  target: number;
+  unit: string;
+  explanation: string;
+}
+export interface MissionOutcome { success: boolean; objectives: MissionObjective[]; elapsedEarthDays: number }
 
 /** Effect an event wants applied to the simulation (produced by EventSystem, applied by MissionSimulator). */
 export interface EventEffectSpec {
@@ -42,6 +53,7 @@ export interface ActiveEffect extends EventEffectSpec {
   remainingHours: number;
   /** Morale already deducted (communication loss) so it can be restored on expiry. */
   moraleApplied?: number;
+  hoursSavedByCrew?: number;
 }
 export type SystemStatus = 'operational' | 'degraded' | 'critical' | 'offline';
 
@@ -83,6 +95,8 @@ export interface SimulationState {
   radiationExposure: number; // mSv total
   difficulty: Difficulty;
   activeEffects: ActiveEffect[];
+  objectives: MissionObjective[];
+  outcome: MissionOutcome | null;
 }
 
 export interface SimulationEvent {

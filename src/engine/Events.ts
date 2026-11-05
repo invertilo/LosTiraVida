@@ -108,6 +108,9 @@ export class EventSystem {
   /** @param eventRateMultiplier scales the hourly event chance (difficulty). */
   constructor(private readonly eventRateMultiplier: number = 1) {}
 
+  serialize(): Record<string, number> { return { ...this.eventCooldown }; }
+  restore(cooldowns: Record<string, number>): void { this.eventCooldown = { ...cooldowns }; }
+
   generateEvent(state: SimulationState, random: () => number): SimulationEvent | null {
     // Incidents should punctuate the mission, not bury the player in alerts.
     // At 1X this averages roughly one incident every 25-40 real seconds.

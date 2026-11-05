@@ -19,6 +19,20 @@ function winRate(location: LocationType, difficulty: Difficulty, [life, radiatio
   return wins / runs;
 }
 
+const decisionDistribution: Split[] = [
+  [30, 50, 20], [40, 40, 20], [25, 65, 10], [35, 55, 10], [25, 60, 15], [20, 60, 20], [40, 50, 10],
+];
+function seededRandom(seed: number) {
+  let value = seed;
+  return () => {
+    value |= 0;
+    value = (value + 0x6d2b79f5) | 0;
+    let t = Math.imul(value ^ (value >>> 15), 1 | value);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 describe('Monte Carlo win rates (100 runs each, normal difficulty)', () => {
   // Splits are life support / radiation shield / hydroponics.
   const winning: Record<LocationType, Split[]> = {
@@ -51,9 +65,42 @@ describe('Difficulty ordering', () => {
       expect(n).toBeGreaterThanOrEqual(h);
     }
   });
-  it('easy forgives splits that fail on normal; hard is winnable only with heavy shielding', () => {
+  it('easy forgives splits that fail on normal; hard needs a deliberate life-support and shielding split', () => {
     expect(winRate('moon', 'easy', [40, 40, 20], 30)).toBeGreaterThan(0.3);
-    expect(winRate('moon', 'hard', [30, 55, 15], 30)).toBeGreaterThan(0.3);
+    expect(winRate('moon', 'hard', [35, 55, 10], 30)).toBeGreaterThan(0.3);
     expect(winRate('moon', 'hard', [40, 40, 20], 30)).toBeLessThan(0.3);
+  });
+});
+
+describe('Target win rates across a shared decision distribution', () => {
+  it('keeps easy at 70–90%, normal at 40–70%, and hard at 15–40%', () => {
+    const originalRandom = Math.random;
+    const rates: Record<Difficulty, number> = { easy: 0, normal: 0, hard: 0 };
+    try {
+      for (const [difficultyIndex, difficulty] of (['easy', 'normal', 'hard'] as const).entries()) {
+        Math.random = seededRandom(9001 + difficultyIndex);
+        let wins = 0;
+        let runs = 0;
+        for (const location of ['mars', 'moon'] as const) {
+          for (let i = 0; i < 30; i++) {
+            const simulator = new MissionSimulator(location, 4, difficulty);
+            const [lifeSupportPower, radiationShieldPower, foodProductionPower] = decisionDistribution[(i + (location === 'moon' ? 2 : 0)) % decisionDistribution.length];
+            simulator.setResourceAllocation({ lifeSupportPower, radiationShieldPower, foodProductionPower });
+            for (let hour = 0; hour < 9000 && simulator.isMissionRunning(); hour++) simulator.step();
+            if (simulator.getMissionResult() === true) wins++;
+            runs++;
+          }
+        }
+        rates[difficulty] = wins / runs;
+      }
+    } finally {
+      Math.random = originalRandom;
+    }
+    expect(rates.easy).toBeGreaterThanOrEqual(0.7);
+    expect(rates.easy).toBeLessThanOrEqual(0.9);
+    expect(rates.normal).toBeGreaterThanOrEqual(0.4);
+    expect(rates.normal).toBeLessThanOrEqual(0.7);
+    expect(rates.hard).toBeGreaterThanOrEqual(0.15);
+    expect(rates.hard).toBeLessThanOrEqual(0.4);
   });
 });

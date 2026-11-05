@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { MissionSimulator } from '../engine/SimulationState';
 import { Physics } from '../engine/Physics';
 import { EventSystem } from '../engine/Events';
+import { evaluateMissionObjectives } from '../engine/objectives';
 import { LUNAR_PHYSICS, MARS_PHYSICS, POWER_SYSTEM, LUNAR_ENVIRONMENT, MARS_ENVIRONMENT } from '../engine/NASAData';
 import type { Astronaut, SimulationState } from '../engine/types';
 
@@ -115,7 +116,7 @@ describe('Failure and success conditions', () => {
   const moon = new Physics(LUNAR_PHYSICS);
   const base = (over: Partial<SimulationState['resources']> = {}): SimulationState => ({
     location: 'moon', dayNumber: 10, hourOfDay: 5, crew: mkCrew(), isDay: true, eventLog: [],
-    missionSuccess: null, radiationExposure: 0, difficulty: 'normal', activeEffects: [],
+    missionSuccess: null, radiationExposure: 0, difficulty: 'normal', activeEffects: [], objectives: [], outcome: null,
     resources: { oxygen: 100, water: 100, food: 100, power: 10, co2_stored: 0, ...over },
     systems: {} as never, allocation: {} as never,
   });
@@ -254,7 +255,7 @@ describe('Edge cases', () => {
       expect(s.getEvents().slice(-1)[0]?.description).not.toMatch(/Batería/);
     }
   });
-  it('default allocation (30/50/20) wins a quiet year on both bodies; the old 40/30/20 split fails on radiation', () => {
+  it('default allocation wins quietly; reducing shielding to 30% fails the lunar radiation objective', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.99);
     for (const loc of ['moon', 'mars'] as const) {
       const s = new MissionSimulator(loc); run(s, 24 * 400);
@@ -262,8 +263,12 @@ describe('Edge cases', () => {
       const old = new MissionSimulator(loc);
       old.setResourceAllocation({ lifeSupportPower: 40, radiationShieldPower: 30, foodProductionPower: 20 });
       run(old, 24 * 400);
-      expect(old.getMissionResult()).toBe(false);
-      expect(old.getEvents().slice(-1)[0]?.description).toMatch(/radiación/);
+      if (loc === 'moon') {
+        expect(old.getMissionResult()).toBe(false);
+        expect(old.getEvents().slice(-1)[0]?.description).toMatch(/radiación/);
+      } else {
+        expect(old.getMissionResult()).toBe(true);
+      }
     }
   });
   it('radiation exceeds the 50 mSv/yr limit within ~1 year on the Moon at default shielding', () => {
@@ -360,7 +365,7 @@ describe('EventSystem', () => {
   const es = () => new EventSystem();
   const state = (location: 'moon' | 'mars', morale = 75, day = 1): SimulationState => ({
     location, dayNumber: day, hourOfDay: 3, crew: mkCrew().map(c => ({ ...c, morale })), isDay: true, eventLog: [],
-    missionSuccess: null, radiationExposure: 0, difficulty: 'normal', activeEffects: [],
+    missionSuccess: null, radiationExposure: 0, difficulty: 'normal', activeEffects: [], objectives: [], outcome: null,
     resources: { oxygen: 1, water: 1, food: 1, power: 1, co2_stored: 0 }, systems: {} as never, allocation: {} as never,
   });
 
@@ -654,6 +659,71 @@ describe('End-of-mission messages', () => {
     run(s, 40);
     expect(s.getMissionResult()).toBe(false);
     expect(lastFailure(s)?.title).toBe('Misión incompleta');
-    expect(lastFailure(s)?.description).toMatch(/reserva de comida demasiado baja/);
+    expect(lastFailure(s)?.description).toMatch(/\d+\.\d kg disponibles al cierre/);
+  });
+});
+
+describe('Mission objectives and save continuity', () => {
+  const objectiveMisses: Array<[string, (state: SimulationState) => void, number]> = [
+    ['duration', () => {}, 364],
+    ['crew', state => state.crew.forEach(member => { member.healthStatus = 'critical'; }), 365],
+    ['radiation', state => { state.radiationExposure = 51; }, 365],
+    ['oxygen', state => { state.resources.oxygen = 10; }, 365],
+    ['water', state => { state.resources.water = 50; }, 365],
+    ['food', state => { state.resources.food = 50; }, 365],
+  ];
+  it.each(objectiveMisses)('marks %s as a failed mandatory objective when its rule is missed', (id, alter, days) => {
+    const sim = new MissionSimulator('mars');
+    const state = sim.getState();
+    alter(state as SimulationState);
+    const objectives = evaluateMissionObjectives(state, days, 50, true);
+    expect(objectives.find(objective => objective.id === id)?.status).toBe('failed');
+  });
+
+  it.each([
+    ['mars', MARS_ENVIRONMENT.day_night_cycle_hours],
+    ['moon', LUNAR_ENVIRONMENT.day_night_cycle_hours],
+  ] as const)('finishes at exactly 8760 simulated hours on %s', (location, cycle) => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const sim = new MissionSimulator(location);
+    const state = internals(sim).state;
+    const beforeFinalHour = 8759;
+    state.dayNumber = Math.floor(beforeFinalHour / cycle) + 1;
+    state.hourOfDay = beforeFinalHour % cycle;
+    sim.step();
+    expect(((sim.getState().dayNumber - 1) * cycle + sim.getState().hourOfDay) / 24).toBeCloseTo(365, 8);
+    expect(sim.getMissionResult()).toBe(true);
+    expect(sim.getEvents().filter(event => event.title === '¡Misión completa!')).toHaveLength(1);
+  });
+
+  it('creates one terminal outcome, and later steps cannot change it', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const sim = new MissionSimulator('mars');
+    const state = internals(sim).state;
+    const before = 8759;
+    state.dayNumber = Math.floor(before / MARS_ENVIRONMENT.day_night_cycle_hours) + 1;
+    state.hourOfDay = before % MARS_ENVIRONMENT.day_night_cycle_hours;
+    sim.step();
+    const terminal = sim.getState();
+    sim.step();
+    expect(sim.getState()).toEqual(terminal);
+    expect(terminal.outcome?.objectives).toHaveLength(6);
+    expect(terminal.eventLog.filter(event => event.title.includes('Misión completa')).length).toBe(1);
+  });
+
+  it('serializes event identifiers, cooldowns, and the complete simulation state', () => {
+    const sim = new MissionSimulator('mars');
+    sim.applyEventEffect({ kind: 'water_leak', durationHours: 50, magnitude: 5 });
+    const saved = sim.serialize();
+    saved.eventCooldowns.water_leak = 42;
+    const restored = MissionSimulator.restore(saved);
+    expect(restored.getState()).toEqual(sim.getState());
+    expect(restored.serialize().eventCooldowns.water_leak).toBe(42);
+    expect(restored.applyEventEffect({ kind: 'equipment_failure', durationHours: 10, magnitude: 0.2, system: 'power' }).id).toBe(2);
+  });
+
+  it('rejects save data with an unsupported schema version', () => {
+    const sim = new MissionSimulator('mars');
+    expect(() => MissionSimulator.restore({ ...sim.serialize(), schemaVersion: 99 } as never)).toThrow(/incompatible/);
   });
 });

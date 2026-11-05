@@ -5,6 +5,7 @@ import { ROLE_LABEL } from '../lib/mission';
 import { ROLE_TINT, cx } from '../lib/ui';
 import { Panel, Pill } from './primitives';
 import { CrewSprite } from './sprites';
+import { stationForEffect } from '../lib/eventPresentation';
 
 type StationId = 'control' | 'lifeSupport' | 'lab' | 'hydroponics';
 
@@ -32,16 +33,6 @@ const NORMAL_TASK: Record<AstronautRole, string> = {
   botanist: 'CULTIVANDO',
   geologist: 'CATALOGANDO',
 };
-
-function stationForEffect(effect: ActiveEffect): StationId {
-  if (effect.kind === 'water_leak') return 'lifeSupport';
-  if (effect.kind === 'communication_loss') return 'control';
-  if (effect.kind === 'crop_disease') return 'hydroponics';
-  if (effect.kind === 'radiation_spike' || effect.kind === 'dust_storm') return 'control';
-  if (effect.system === 'lifeSupport' || effect.system === 'power') return 'lifeSupport';
-  if (effect.system === 'foodProduction') return 'hydroponics';
-  return effect.system === 'radiationShield' ? 'control' : 'lab';
-}
 
 function taskFor(crew: Astronaut, repairing: boolean, effect: ActiveEffect | undefined, isDay: boolean) {
   if (repairing && effect) return `REPARANDO: ${effect.title}`;

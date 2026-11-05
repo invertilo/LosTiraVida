@@ -127,9 +127,9 @@ export const DIFFICULTY_SETTINGS: Record<
   easy: {
     label: 'Fácil',
     description: 'Más reservas, menos radiación y menos emergencias.',
-    resourceMultiplier: 1.5,
-    radiationMultiplier: 0.7,
-    eventRateMultiplier: 0.6,
+    resourceMultiplier: 1.25,
+    radiationMultiplier: 0.85,
+    eventRateMultiplier: 0.8,
     startingPowerFraction: 1,
   },
   normal: {
@@ -142,10 +142,10 @@ export const DIFFICULTY_SETTINGS: Record<
   },
   hard: {
     label: 'Difícil',
-    description: 'Reservas limitadas, más radiación y emergencias frecuentes.',
+    description: 'Reservas limitadas, radiación intensa y emergencias frecuentes.',
     resourceMultiplier: 0.85,
-    radiationMultiplier: 1.15,
-    eventRateMultiplier: 1.5,
+    radiationMultiplier: 1.25,
+    eventRateMultiplier: 1.2,
     startingPowerFraction: 0.35,
   },
 };

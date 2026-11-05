@@ -91,6 +91,14 @@ export function MissionResult({ open, state, onClose, onRetry, onNewMission }: M
           {finalEvent?.description ?? (success ? 'Tu tripulación sobrevivió un año completo.' : 'No fue posible sostener el puesto.')}
         </p>
 
+        <ul className="result-objectives mt-5 text-left" aria-label="Resultado de objetivos">
+          {state.outcome?.objectives.map(objective => <li key={objective.id} className={objective.status}>
+            <span aria-hidden="true">{objective.status === 'completed' ? '✓' : objective.status === 'failed' ? '×' : '·'}</span>
+            <span><strong>{objective.title}</strong><small>{objective.explanation}</small></span>
+            <b>{objective.status === 'completed' ? 'CUMPLIDO' : objective.status === 'failed' ? 'FALLIDO' : 'PENDIENTE'}</b>
+          </li>)}
+        </ul>
+
         {/* Score */}
         <div className="mt-6 grid grid-cols-2 gap-3">
           <div className="tile8 px-3 py-3">

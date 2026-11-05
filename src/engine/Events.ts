@@ -85,7 +85,7 @@ const EVENT_DEFS: EventDef[] = [
     kind: 'crop_disease', severity: 'warning', cooldownDays: 90,
     build: () => ({
       title: 'Brote de enfermedad en cultivos',
-      description: 'Hay moho en los cultivos hidropónicos. La producción será cero hasta terminar el ciclo actual.',
+      description: 'Hay moho en los cultivos hidropónicos. La producción queda detenida; asigna más energía a hidroponía para acelerar la descontaminación.',
       effect: { kind: 'crop_disease', durationHours: 0, magnitude: 1 },
     }),
   },

@@ -220,7 +220,7 @@ export function OutpostDashboard({ location, crewCount, difficulty = 'normal', o
       </div>
 
       <div className="mx-auto max-w-[1440px] p-2 sm:p-4">
-        <ActiveEffects state={state} onAssignCrew={assignCrew} disabled={ended} />
+        <ActiveEffects state={state} onAssignCrew={assignCrew} onOpenManagement={() => setActiveTab('management')} disabled={ended} />
         <DashboardTabs active={activeTab} onChange={tab => { setActiveTab(tab); if (tab === 'log') setReviewedEvents(state.eventLog.length); }} unread={Math.max(0, state.eventLog.length - reviewedEvents)} alerted={[
           ...(state.systems.power !== 'operational' || state.systems.communications !== 'operational' ? ['exterior' as const] : []),
           ...(state.systems.lifeSupport !== 'operational' || state.systems.foodProduction !== 'operational' ? ['habitat' as const] : []),
@@ -231,7 +231,7 @@ export function OutpostDashboard({ location, crewCount, difficulty = 'normal', o
           <div id="dashboard-panel" role="tabpanel" aria-labelledby={`tab-${activeTab}`} tabIndex={0}>
             {activeTab === 'exterior' && <ExteriorScene state={state} />}
             {activeTab === 'habitat' && <HabitatScene state={state} isRunning={isRunning} />}
-            {activeTab === 'management' && <div className="tab-content-grid"><MissionStats state={state} /><MissionObjectives state={state} /><ResourceGauges state={state} /><AllocationPanel allocation={state.allocation} onChange={setAllocation} location={location} crewCount={state.crew.length} disabled={ended} /></div>}
+            {activeTab === 'management' && <div className="tab-content-grid"><MissionStats state={state} /><MissionObjectives state={state} /><ResourceGauges state={state} /><AllocationPanel allocation={state.allocation} onChange={setAllocation} location={location} crewCount={state.crew.length} disabled={ended} cropDiseaseActive={state.activeEffects.some(effect => effect.kind === 'crop_disease')} /></div>}
             {activeTab === 'crew' && <CrewStatus crew={state.crew} />}
             {activeTab === 'log' && <div className="tab-content-grid"><section className="tile8 px-4 py-3"><label className="t-body text-px-white flex items-center gap-3"><input type="checkbox" checked={pauseOnWarnings} onChange={event => { setPauseOnWarnings(event.target.checked); try { localStorage.setItem('outpost.pauseWarnings', event.target.checked ? '1' : '0'); } catch { /* optional preference */ } }} /> Pausar también ante advertencias</label></section><EventLog events={state.eventLog} location={location} /></div>}
           </div>

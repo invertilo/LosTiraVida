@@ -36,13 +36,15 @@ function formatRemaining(hours: number) {
 interface Props {
   state: SimulationState;
   onAssignCrew: (role: AstronautRole, assignment: 'maintenance' | 'rest') => void;
+  onOpenManagement: () => void;
   disabled?: boolean;
 }
 
-export function ActiveEffects({ state, onAssignCrew, disabled }: Props) {
+export function ActiveEffects({ state, onAssignCrew, onOpenManagement, disabled }: Props) {
   const { activeEffects: effects, crew, allocation } = state;
   if (!effects.length) return null;
   const needsRepair = effects.some((e) => REPAIRABLE.has(e.kind));
+  const cropDisease = effects.find(e => e.kind === 'crop_disease');
   const assigned = allocation.maintenancePersonnel;
 
   return (
@@ -60,6 +62,17 @@ export function ActiveEffects({ state, onAssignCrew, disabled }: Props) {
           </li>
         ))}
       </ul>
+      {cropDisease && <div className="crop-treatment">
+        <div className="crop-treatment-copy">
+          <strong>DESCONTAMINACIÓN HIDROPÓNICA</strong>
+          <p>La cosecha está detenida. Aumenta «Producción de alimentos» en Gestión para descontaminar más rápido; la energía se toma del presupuesto compartido de 100%.</p>
+          <div className="crop-treatment-meter" role="progressbar" aria-label="Avance de descontaminación" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.max(0, Math.min(100, Math.round((1 - cropDisease.remainingHours / cropDisease.durationHours) * 100)))}>
+            <i style={{ width: `${Math.max(0, Math.min(100, (1 - cropDisease.remainingHours / cropDisease.durationHours) * 100))}%` }} />
+          </div>
+          <span className="crop-treatment-rate">ENERGÍA HIDROPÓNICA {allocation.foodProductionPower}% · TRATAMIENTO ×{(1 + allocation.foodProductionPower / 25).toFixed(1)}</span>
+        </div>
+        <button type="button" className="btn8 btn8-primary" onClick={onOpenManagement}>ABRIR GESTIÓN</button>
+      </div>}
       {needsRepair && (
         <div className="mt-3 t-small">
           <p className="text-px-dim mb-2">

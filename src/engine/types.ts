@@ -54,6 +54,7 @@ export interface ActiveEffect extends EventEffectSpec {
   /** Morale already deducted (communication loss) so it can be restored on expiry. */
   moraleApplied?: number;
   hoursSavedByCrew?: number;
+  hoursSavedByEnergy?: number;
 }
 export type SystemStatus = 'operational' | 'degraded' | 'critical' | 'offline';
 

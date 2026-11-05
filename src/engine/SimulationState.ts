@@ -207,9 +207,12 @@ export class MissionSimulator {
     const rate = this.repairRate();
     const kept: ActiveEffect[] = [];
     for (const e of this.state.activeEffects) {
-      const repairable = e.kind === 'equipment_failure' || e.kind === 'water_leak';
-      if (repairable) e.hoursSavedByCrew = (e.hoursSavedByCrew ?? 0) + Math.max(0, rate - 1);
-      e.remainingHours -= repairable ? rate : 1;
+      const crewRepairable = e.kind === 'equipment_failure' || e.kind === 'water_leak';
+      // Hydroponic allocation drives its own decontamination cycle (1x at 0%, up to 5x at 100%).
+      const energyTreatmentRate = e.kind === 'crop_disease' ? 1 + this.state.allocation.foodProductionPower / 25 : 1;
+      if (crewRepairable) e.hoursSavedByCrew = (e.hoursSavedByCrew ?? 0) + Math.max(0, rate - 1);
+      if (e.kind === 'crop_disease') e.hoursSavedByEnergy = (e.hoursSavedByEnergy ?? 0) + Math.max(0, energyTreatmentRate - 1);
+      e.remainingHours -= crewRepairable ? rate : e.kind === 'crop_disease' ? energyTreatmentRate : 1;
       if (e.remainingHours > 0) {
         kept.push(e);
         continue;
@@ -221,7 +224,9 @@ export class MissionSimulator {
         timestamp: { day: this.state.dayNumber, hour: this.state.hourOfDay },
         type: 'success',
         title: `Resuelto: ${e.title}`,
-        description: `El efecto terminó y se reanudan las operaciones normales. ${this.state.allocation.maintenancePersonnel.length ? `Participaron ${this.state.crew.filter(c => this.state.allocation.maintenancePersonnel.includes(c.role)).map(c => c.name).join(', ')}; la tripulación ahorró aproximadamente ${(e.hoursSavedByCrew ?? 0).toFixed(1)} h.` : 'La reparación se completó sin personal asignado.'}`,
+        description: e.kind === 'crop_disease'
+          ? `El módulo hidropónico terminó la descontaminación con ${this.state.allocation.foodProductionPower}% de energía asignada; el tratamiento ahorró aproximadamente ${(e.hoursSavedByEnergy ?? 0).toFixed(1)} h.`
+          : `El efecto terminó y se reanudan las operaciones normales. ${this.state.allocation.maintenancePersonnel.length ? `Participaron ${this.state.crew.filter(c => this.state.allocation.maintenancePersonnel.includes(c.role)).map(c => c.name).join(', ')}; la tripulación ahorró aproximadamente ${(e.hoursSavedByCrew ?? 0).toFixed(1)} h.` : 'La reparación se completó sin personal asignado.'}`,
       });
     }
     this.state.activeEffects = kept;

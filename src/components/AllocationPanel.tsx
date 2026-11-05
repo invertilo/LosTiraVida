@@ -185,10 +185,11 @@ interface AllocationPanelProps {
   location: LocationType;
   crewCount: number;
   disabled?: boolean;
+  cropDiseaseActive?: boolean;
   index?: number;
 }
 
-export function AllocationPanel({ allocation, onChange, location, crewCount, disabled, index }: AllocationPanelProps) {
+export function AllocationPanel({ allocation, onChange, location, crewCount, disabled, cropDiseaseActive = false, index }: AllocationPanelProps) {
   const values: Record<AllocKey, number> = {
     lifeSupportPower: Math.round(allocation.lifeSupportPower),
     radiationShieldPower: Math.round(allocation.radiationShieldPower),
@@ -227,9 +228,9 @@ export function AllocationPanel({ allocation, onChange, location, crewCount, dis
       </span>
     ),
     foodProductionPower: (
-      <>
-        Cosecha +{fx.foodPerDay.toFixed(1)} kg/día (consumo {fx.foodDemand.toFixed(1)})
-      </>
+      cropDiseaseActive
+        ? <>Brote activo: cosecha <strong className="text-px-red">0 kg/día</strong> · descontaminación ×{(1 + values.foodProductionPower / 25).toFixed(1)}</>
+        : <>Cosecha +{fx.foodPerDay.toFixed(1)} kg/día (consumo {fx.foodDemand.toFixed(1)})</>
     ),
   };
 

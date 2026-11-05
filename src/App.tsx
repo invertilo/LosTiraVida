@@ -18,6 +18,7 @@ import { FlaskIcon, MedicalIcon, MinusIcon, PlayIcon, PlusIcon, QuestionIcon, St
 const TUTORIAL_KEY = 'outpost.tutorialSeen.v1';
 const MIN_CREW = 2;
 const MAX_CREW = 6;
+const formatHours = (hours: number) => `${hours.toFixed(1)} h`;
 
 // Mirrors MissionSimulator's crew generation so the preview matches the mission.
 const CREW_NAMES = ['Alex', 'Jordan', 'Casey', 'Morgan', 'Taylor', 'Riley'];
@@ -33,8 +34,8 @@ const DESTINATIONS: Record<
     tagline: 'Soles cortos, luz débil y emergencias más frecuentes.',
     difficulty: 'Estándar',
     facts: [
-      { label: 'Duración del día', value: `${MARS_ENVIRONMENT.day_night_cycle_hours} h` },
-      { label: 'Noche', value: `${MARS_ENVIRONMENT.night_duration_hours} h` },
+      { label: 'Duración del día', value: formatHours(MARS_ENVIRONMENT.day_night_cycle_hours) },
+      { label: 'Noche', value: formatHours(MARS_ENVIRONMENT.night_duration_hours) },
       { label: 'Flujo solar', value: `${MARS_ENVIRONMENT.solar_panel_output_w_per_m2} W/m2` },
       { label: 'Radiación', value: `${MARS_ENVIRONMENT.unshielded_radiation_dose_mSv_per_year} mSv/año` },
     ],
@@ -44,8 +45,8 @@ const DESTINATIONS: Record<
     tagline: 'Noches de dos semanas, radiación intensa y luz solar fuerte.',
     difficulty: 'Difícil',
     facts: [
-      { label: 'Duración del día', value: `${LUNAR_ENVIRONMENT.day_night_cycle_hours} h` },
-      { label: 'Noche', value: `${LUNAR_ENVIRONMENT.night_duration_hours} h` },
+      { label: 'Duración del día', value: formatHours(LUNAR_ENVIRONMENT.day_night_cycle_hours) },
+      { label: 'Noche', value: formatHours(LUNAR_ENVIRONMENT.night_duration_hours) },
       { label: 'Flujo solar', value: `${LUNAR_ENVIRONMENT.solar_panel_output_w_per_m2} W/m2` },
       { label: 'Radiación', value: `${LUNAR_ENVIRONMENT.unshielded_radiation_dose_mSv_per_year} mSv/año` },
     ],

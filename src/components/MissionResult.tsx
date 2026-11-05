@@ -55,7 +55,9 @@ export function MissionResult({ open, state, onClose, onRetry, onNewMission }: M
   const stats = [
     { label: 'Días terrestres', value: Math.floor(elapsedEarthDays(state)).toString(), pts: score.days },
     { label: 'Tripulación saludable', value: `${healthy}/${state.crew.length}`, pts: score.crew },
-    { label: 'Radiación', value: `${state.radiationExposure.toFixed(1)}/${RADIATION_LIMIT_MSV}`, pts: score.radiation },
+    { label: 'Dosis / reto anual', value: `${state.radiationExposure.toFixed(1)}/${RADIATION_LIMIT_MSV} mSv`, pts: score.radiation },
+    { label: 'Estaciones atendidas', value: `${Math.min(6, state.completedMaintenanceTasks?.length ?? 0)}/6 con bono`, pts: score.repairs },
+    { label: 'Rutas técnicas completas', value: `${Math.round(score.routes / 500)}/3 con bono`, pts: score.routes },
     ...(success ? [{ label: 'Bono anual', value: '365', pts: score.bonus }] : []),
   ];
 

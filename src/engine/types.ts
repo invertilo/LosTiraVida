@@ -13,6 +13,7 @@ export interface Astronaut {
 
 export type LocationType = 'moon' | 'mars';
 export type Difficulty = 'easy' | 'normal' | 'hard';
+export type MaintenanceStation = 'power' | 'lifeSupport' | 'hydroponics' | 'communications' | 'radiationShield' | 'water';
 
 export type EventKind =
   | 'dust_storm'
@@ -55,6 +56,7 @@ export interface ActiveEffect extends EventEffectSpec {
   moraleApplied?: number;
   hoursSavedByCrew?: number;
   hoursSavedByEnergy?: number;
+  hoursSavedByTask?: number;
 }
 export type SystemStatus = 'operational' | 'degraded' | 'critical' | 'offline';
 
@@ -96,6 +98,7 @@ export interface SimulationState {
   radiationExposure: number; // mSv total
   difficulty: Difficulty;
   activeEffects: ActiveEffect[];
+  completedMaintenanceTasks?: Array<{ day: number; station: MaintenanceStation }>;
   objectives: MissionObjective[];
   outcome: MissionOutcome | null;
 }

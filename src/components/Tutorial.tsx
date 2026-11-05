@@ -20,6 +20,7 @@ import {
   PowerIcon,
   ShieldIcon,
   SunIcon,
+  WrenchIcon,
   WaterIcon,
 } from './icons';
 
@@ -92,12 +93,12 @@ const STEPS: Step[] = [
         </div>
       </Art>
     ),
-    facts: ['Generador O2 ISS: 9 kg/día', 'Recuperación de agua: 98%', 'Límite: 50 mSv/año'],
+    facts: ['Generador O₂ ISS: 9 kg/día', 'Recuperación de agua: 98%', 'Reto <50 mSv/año · NASA 600 mSv/carrera'],
   },
   {
     eyebrow: 'Día y noche',
     title: 'Sobrevive a la oscuridad',
-    body: 'Los paneles solares solo funcionan de día. Un reactor de fisión de 6 kW opera siempre, pero si la carga nocturna es mayor, la batería se descarga. Una noche marciana dura 12 horas; una noche lunar, 177.',
+    body: 'Los paneles solares solo funcionan de día. Un reactor de fisión de 6 kW opera siempre, pero si la carga nocturna es mayor, la batería se descarga. Una noche marciana dura unas 12 horas; una noche lunar, 354 horas.',
     art: (
       <Art color="var(--px-yellow)">
         <div className="flex items-center gap-2">
@@ -106,7 +107,7 @@ const STEPS: Step[] = [
         </div>
       </Art>
     ),
-    facts: ['Sol marciano: 24,6 h', 'Día lunar: 354 h', 'Reactor Kilopower'],
+    facts: ['Sol marciano: 24,6 h', 'Ciclo lunar: 708,7 h', 'Noche lunar: 354,4 h'],
   },
   {
     eyebrow: 'Tripulación',
@@ -120,13 +121,24 @@ const STEPS: Step[] = [
     facts: ['OK > Cansancio > Lesión > Crítico'],
   },
   {
+    eyebrow: 'Operaciones a bordo',
+    title: 'Camina por la nave y repara en persona',
+    body: 'Abre la pestaña OPERACIONES. Recorre la cubierta con A/D o ←/→; en móvil usa las flechas o desliza el pasillo. Acércate a una estación y pulsa E, o tóquela. Cada minijuego dura unos segundos: puede adelantar una avería hasta 6 horas o recuperar un recurso. El resultado aparece al instante y en la bitácora.',
+    art: (
+      <Art color="var(--px-yellow)">
+        <WrenchIcon size={48} />
+      </Art>
+    ),
+    facts: ['6 estaciones', '1 tarea por estación cada sol', 'Marte y Luna'],
+  },
+  {
     eyebrow: 'Controles',
     title: 'Listo, jugador 1',
     body: (
       <ul className="grid gap-3 text-left max-w-[320px] mx-auto">
         {[
           ['Espacio', 'Iniciar / pausar'],
-          ['1 2 3', 'Velocidad 1X 2X 4X'],
+          ['1–5', 'Velocidad 1X a 16X'],
           ['R', 'Reiniciar misión'],
           ['?', 'Abrir esta guía'],
         ].map(([k, v]) => (

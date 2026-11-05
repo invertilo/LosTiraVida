@@ -11,7 +11,7 @@ Administra energía, recursos y tripulación durante una misión de 365 días. C
 [![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Vite](https://img.shields.io/badge/Vite-8-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vite.dev/)
-[![Tests](https://img.shields.io/badge/tests-101%20passing-62FF73?style=for-the-badge)](#calidad)
+[![Tests](https://img.shields.io/badge/tests-123%20passing-62FF73?style=for-the-badge)](#calidad)
 [![Vercel](https://img.shields.io/badge/Vercel-online-000000?style=for-the-badge&logo=vercel)](https://los-tira-vida.vercel.app)
 
 [Jugar ahora](https://los-tira-vida.vercel.app) · [Cómo funciona](#cómo-se-juega) · [Instalación](#desarrollo-local) · [Equipo](#equipo)
@@ -37,10 +37,13 @@ No es un tablero estático: el hábitat está vivo. Los personajes 8-BIT patrull
 | Sistema | Qué sucede en la misión |
 | --- | --- |
 | **Tripulación visible** | Cuatro especialistas animados trabajan en control, soporte vital, laboratorio e hidroponía. |
+| **Nave explorable** | Recorre el hábitat y su ala de ingeniería en una cubierta lateral larga con luces, cielo marciano y alertas ligadas al estado de la misión. |
+| **Reparaciones jugables** | Seis estaciones ofrecen minijuegos cortos de energía, soporte vital, cultivos, comunicaciones, blindaje y agua. Las alertas llevan directamente al sistema afectado; asignar especialistas acelera más la reparación y cada tarea modifica recursos o adelanta una avería real. |
 | **Recursos conectados** | Oxígeno, agua, alimentos, batería y radiación evolucionan cada hora. |
 | **Energía limitada** | Distribuyes el presupuesto entre soporte vital, escudo e hidroponía. Nunca alcanza para todo. |
 | **Ciclo día/noche** | La producción solar cambia y obliga a sobrevivir con la batería durante la noche. |
 | **Emergencias** | Tormentas, fugas, fallas técnicas, radiación y enfermedades alteran la simulación. |
+| **Diagnóstico comprensible** | Cada alerta explica el riesgo y cuánto dura el efecto; el visor de causa y efecto muestra cómo el presupuesto energético llega al oxígeno, el agua, la cosecha y el blindaje. |
 | **Reparaciones con costo** | Asignar personal acelera las reparaciones, pero eleva su estrés. La ingeniería tiene ventaja. |
 | **Dificultad real** | Los niveles cambian reservas, radiación, eventos y batería inicial. |
 | **Interfaz en español** | Paneles, alertas, tutorial y explicaciones contextuales completamente localizados. |
@@ -52,6 +55,12 @@ No es un tablero estático: el hábitat está vivo. Los personajes 8-BIT patrull
 3. Reparte la energía sin superar el 100 % del presupuesto.
 4. Reacciona a las alertas y asigna al tripulante adecuado para reparar.
 5. Controla moral, estrés, radiación y reservas hasta completar 365 días terrestres.
+
+### Recorre la nave y resuelve averías
+
+Abre **Operaciones** para caminar por el hábitat y el ala de ingeniería. Usa `A` / `D` o `←` / `→`; en móvil, toca las flechas o desliza el pasillo. Cuando una estación esté al alcance, pulsa `E` o selecciónala. Cada una tiene un minijuego de pocos pasos y puede usarse una vez por estación cada sol.
+
+La consola parpadea en rojo cuando un sistema necesita atención; cada alerta explica el riesgo y tiene un botón para abrir la estación afectada y su tarea. Por la noche se atenúan las luces y titila el cielo del ventanal. Si una persona está cansada, herida o en estado crítico, su traje también lo muestra. Antes de empezar cada tarea verás su posible beneficio; puedes asignar a un tripulante y su especialidad acelera hasta cuatro horas extra una reparación, con un costo de estrés. Al terminar, un mensaje explica exactamente qué cambió. El resultado también queda en la bitácora y en la partida guardada.
 
 La velocidad `1X` representa una hora simulada por segundo. `2X` y `4X` permiten avanzar con rapidez sin perder el control de las emergencias.
 
@@ -80,7 +89,9 @@ React 19 + TypeScript
 └── Vite 8 + Tailwind CSS 4
 ```
 
-La simulación y la presentación están separadas: `src/engine` mantiene las reglas del juego, mientras `src/components` representa el estado mediante paneles, alertas y personajes.
+La simulación y la presentación están separadas: `src/engine` mantiene las reglas del juego, mientras `src/components` representa el estado mediante paneles, alertas y personajes. En Gestión, el visor **Causa y efecto** relaciona la asignación de energía con los sistemas y muestra los eventos que están cambiando su rendimiento.
+
+Las reparaciones manuales usan las mismas reglas y el mismo estado guardado que la simulación por horas; la interfaz no aplica recompensas ficticias. La cubierta funciona como un recorrido lateral que sigue al personaje, también al cambiar el tamaño de pantalla.
 
 ## Desarrollo local
 
@@ -117,7 +128,7 @@ npm run test
 npm run build
 ```
 
-Estado actual: **101 pruebas correctas** y **7 casos documentados como fallos esperados** que registran discrepancias conocidas en los datos heredados.
+Estado actual: **123 pruebas correctas**. Las pruebas incluyen valores NASA con las hipótesis de balance del hábitat documentadas por separado.
 
 ## Despliegue
 

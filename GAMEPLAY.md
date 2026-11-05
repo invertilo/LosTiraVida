@@ -29,15 +29,15 @@ Manage your outpost in real-time:
 - **Day Length**: ~24.6 hours (realistic Martian sol)
 - **Night Duration**: ~12.3 hours
 - **Solar Output**: 590 W/m² (43% of Earth)
-- **Radiation**: 180 mSv/year
+- **Surface radiation**: ~240 mSv/year dose equivalent (MSL/RAD; habitat shielding is modeled separately)
 - **Characteristics**: Shorter nights, less radiation than Moon
 - **Winning Strategy**: More stable power generation due to shorter nights
 
 ### Moon (Hard Difficulty)
-- **Day Length**: ~354 hours (14 Earth days)
-- **Night Duration**: ~354 hours (14 Earth days)
+- **Day/Night Cycle**: ~708.7 hours (29.53 Earth days)
+- **Daylight / Night**: ~354.4 hours each (14.76 Earth days)
 - **Solar Output**: 1,368 W/m² (peak, similar to Earth)
-- **Radiation**: 233 mSv/year
+- **Surface radiation**: ~500 mSv/year dose equivalent (Chang'E-4 LND; habitat shielding is modeled separately)
 - **Characteristics**: Two-week nights, higher radiation, extreme power challenges
 - **Winning Strategy**: Battery management and radiation shielding are critical
 
@@ -99,7 +99,7 @@ Assign crew to:
 - **Source**: Hydroponic systems + emergency rations
 - **Consumption**: ~0.62 kg dry mass/person/day
 - **Critical Threshold**: < 50 kg
-- **Production**: Hydroponic garden produces ~4 kg/m²/year
+- **Production**: Hydroponic garden produces ~20 kg/m²/year in the game's edible-food equivalent
 - **Failure Condition**: 0 kg = mission over
 
 ### Power (Battery)
@@ -193,7 +193,7 @@ All events are logged with:
 - **Title**: Event name
 - **Description**: Details and impact
 
-**Note**: Currently, event effects are logged but not automatically applied to simulation (future enhancement).
+Los eventos aplican sus efectos a la simulación: modifican generación solar, consumo o recuperación de recursos, radiación, cosechas y moral según el evento. Las alertas activas muestran el impacto y permiten abrir la estación correspondiente en Operaciones.
 
 ## Victory Conditions
 
@@ -209,7 +209,7 @@ All events are logged with:
 ### Crew Health
 - No critical health conditions
 - Stress levels manageable
-- Radiation exposure below NASA career limit (600 mSv)
+- Radiation exposure below the game's strict mission-year budget (50 mSv)
 
 ## Failure Conditions
 
@@ -217,7 +217,7 @@ Mission ends if:
 
 1. **Life Support Failure**: Oxygen depleted (< 0 kg)
 2. **Crew Death**: Any crew member in critical condition too long
-3. **Radiation Limit**: Cumulative exposure exceeds 600 mSv career limit
+3. **Radiation Limit**: Cumulative dose exceeds the game's strict 50 mSv mission-year budget. NASA's separate spaceflight career limit is 600 mSv.
 4. **Habitat Catastrophe**: Structure completely offline
 5. **Complete System Failure**: Multiple critical systems fail simultaneously
 
@@ -226,7 +226,7 @@ Mission ends if:
 ### Time Units
 
 - **1 Simulation Hour** = 1 Mars/Moon hour
-- **1 Simulation Sol/Day** = 24-354 hours depending on location
+- **1 Simulation Sol/Day** = 24.6 h on Mars; one 708.7 h day/night cycle on the Moon
 - **Speed Control**: 1x, 2x, 4x simulation speed
 
 ### Day/Night Cycle
@@ -236,8 +236,8 @@ Mission ends if:
 - Night: ~12.3 hours (battery only)
 
 **Moon**:
-- Day: ~177 hours (14 Earth days) - continuous solar power
-- Night: ~177 hours (14 Earth days) - zero solar power
+- Day: ~354.4 hours (14.76 Earth days) - continuous solar power
+- Night: ~354.4 hours (14.76 Earth days) - zero solar power
 
 ## Strategy Guide
 
@@ -269,7 +269,7 @@ Mission ends if:
    - Budget: ~1.4 kWh/hour baseline consumption
    
 2. **Radiation Management**
-   - Moon radiation is higher (233 vs 180 mSv/year)
+   - Lunar surface radiation is higher (~500 vs ~240 mSv/year); habitat shielding reduces the dose received inside.
    - Run shielding at 80%+ during both day and night
    - Track cumulative exposure carefully
 
@@ -322,14 +322,13 @@ If mission fails, check:
 ### Radiation Protection
 - Higher allocation to shielding = lower accumulated dose
 - Moon is harder due to higher baseline radiation
-- Career limit is 600 mSv; ~1 day per Mars sol if unshielded
+- NASA's career limit is 600 mSv; the game uses a stricter 50 mSv mission-year challenge
 
-## Known Limitations & Discrepancies
+## Model notes
 
-- Lunar cycle is documented as 354 hours (full cycle is 708 hours) - slight time compression
-- Event system logs events but does not apply effects to simulation
-- Crew size above 6 may have naming issues
-- Some radiation and food production values differ from NASA data (see test file for details)
+- NASA reports a 600 mSv total career limit for spaceflight. The 50 mSv/year objective is a stricter game challenge, not the NASA career limit.
+- The lunar habitat shielding factor is a gameplay design assumption. Surface dose inputs are based on Chang'E-4 LND and MSL/RAD measurements.
+- Hydroponic yield is a simplified edible-mass game parameter; NASA crop studies report species-specific fresh and dry mass yields.
 
 ## Resources
 

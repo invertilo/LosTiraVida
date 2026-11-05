@@ -19,23 +19,18 @@ export const LIFE_SUPPORT_DATA = {
 
 // Lunar environment constants
 // Sources: NASA Lunar Fact Sheet (nssdc.gsfc.nasa.gov/planetary/factsheet/moonfact.html); Apollo surface data.
-// TIME MODEL (simplification, verified): one simulated lunar "day" is 354 h = 177 h of sunlight + 177 h of night.
-// A real synodic month is 29.53 Earth days = 708.7 h (about 354 h of sun + 354 h of night), so the simulator
-// compresses a real lunar cycle by half. 365 Earth days = ~24.7 simulated lunar days. The
-// `it.fails` tests in nasaData.test.ts record this known gap with the real value.
+// One lunar day/night cycle is one mean synodic month: 29.53059 Earth days = 708.73416 h.
+// This simplified equatorial model splits it evenly into daylight and night.
 export const LUNAR_ENVIRONMENT = {
-  day_night_cycle_hours: 354, // 14.7 days per lunar day/night
-  night_duration_hours: 177, // 14.7 earth days
-  day_duration_hours: 177,
+  day_night_cycle_hours: 708.73416,
+  night_duration_hours: 354.36708,
+  day_duration_hours: 354.36708,
   surface_temperature_day_celsius: 120,
   surface_temperature_night_celsius: -170,
   solar_panel_output_w_per_m2: 140, // at noon, optimally oriented
   avg_solar_irradiance_w_per_m2: 80, // accounting for daily variation
-  // RADIATION NOTE: this is roughly HALF of what has been measured on the lunar surface.
-  // Chang'E-4 Lunar Lander Neutron & Dosimetry (Zhang et al., Science Advances 6, eaaz1334, 2020) measured
-  // ~1.37 mSv/day dose equivalent (~500 mSv/yr). 233 mSv/yr is kept as a deliberate game-balance
-  // simplification so that a 50 mSv/yr budget is reachable with heavy shielding; see DIFFICULTY_SETTINGS.
-  unshielded_radiation_dose_mSv_per_year: 233,
+  // Chang'E-4 LND measured ~1.37 mSv/day dose equivalent, about 500 mSv over 365 days.
+  unshielded_radiation_dose_mSv_per_year: 500,
   dust_storm_probability_per_sol: 0.02, // 2% chance per sol
 };
 
@@ -50,9 +45,8 @@ export const MARS_ENVIRONMENT = {
   surface_temperature_night_celsius: -80,
   solar_panel_output_w_per_m2: 43, // Mars receives 43% of Earth's solar energy
   avg_solar_irradiance_w_per_m2: 25, // accounting for atmospheric dust
-  // RADIATION NOTE: MSL/Curiosity RAD measured ~0.64-0.67 mSv/day on the surface (Hassler et al., Science 343,
-  // 1244797, 2014), i.e. ~235-245 mSv/yr. 180 is ~25% under that; kept as a game-balance simplification.
-  unshielded_radiation_dose_mSv_per_year: 180,
+  // MSL/Curiosity RAD measured ~0.64 mSv/day near solar maximum (~234 mSv/yr); use a rounded 240.
+  unshielded_radiation_dose_mSv_per_year: 240,
   dust_storm_probability_per_sol: 0.001, // rare but significant
   dust_storm_severity: { light: 0.7, severe: 0.25, extreme: 0.05 },
 };
@@ -77,11 +71,12 @@ export const POWER_SYSTEM = {
 
 // Radiation shielding effectiveness
 // Source: NASA shielding studies, ISS experience; NASA-STD-3001 Vol. 1 (crew health standard).
-// NOTE: NASA's actual spaceflight limit is a 600 mSv career limit (NASA-STD-3001, 2022 revision). The 50 mSv/yr
-// figure is the NCRP/ICRP terrestrial occupational limit; the game uses it as a deliberately strict win condition.
+// NASA-STD-3001 Rev B sets a 600 mSv total career limit for spaceflight. The game's 50 mSv mission-year
+// budget is a deliberately stricter challenge target; it is not the NASA career limit.
 export const RADIATION_SHIELDING = {
-  unshielded_dose_rate_mSv_per_year: 233, // Moon
-  yearly_exposure_limit_mSv: 50, // NASA standard
+  unshielded_dose_rate_mSv_per_year: 500, // Lunar surface, Chang'E-4 LND dose equivalent
+  mission_year_budget_mSv: 50,
+  career_exposure_limit_mSv: 600,
   shielding_effectiveness: {
     polyethylene: 0.4, // 40% reduction per 10 cm
     water: 0.35,
@@ -94,19 +89,22 @@ export const RADIATION_SHIELDING = {
 // Food production (hydroponic systems)
 // Source: NASA Controlled Ecological Life Support System (ECLSS)
 export const FOOD_PRODUCTION = {
-  hydroponic_yield_kg_per_m2_per_year: 4, // lettuce, optimal conditions
+  // Simplified edible crop yield used by the game. NASA crop trials vary by species and fresh/dry mass basis.
+  hydroponic_yield_kg_per_m2_per_year: 20,
   growth_cycle_days: 45, // days to harvest
   planting_area_m2: 30, // growing area
-  o2_production_kg_per_kg_biomass: 0.73, // photosynthesis byproduct
+  // Glucose-equivalent photosynthesis mass balance; not a universal whole-plant dry-biomass ratio.
+  o2_production_kg_per_kg_biomass: 1.07,
   water_recycling_efficiency: 0.95, // 95% water recycled
   nutrient_loss_per_cycle: 0.02, // 2% loss per growth cycle
   crop_failure_risk_per_cycle: 0.05, // 5% chance of total loss
 };
 
-// Baseline habitat cover per body, applied on top of the shielding in RADIATION_SHIELDING. Represents the
-// regolith berm over the module (NASA surface-habitat design reference: ~1-2 m of regolith cover). It is also
-// the lever that makes a 50 mSv/yr budget reachable with the game's under-stated dose rates (see notes above).
-export const HABITAT_RADIATION_FACTOR = { moon: 0.7, mars: 0.9 } as const;
+// Shielding factor for the modeled bermed habitat, applied after active and structural shielding.
+// It is a game design assumption, not a universal measured reduction for every habitat.
+// Shielded habitat dose as a fraction of surface dose; models regolith berm + habitat structure.
+// This is a design assumption for the game, not a measured universal factor.
+export const HABITAT_RADIATION_FACTOR = { moon: 0.3, mars: 0.65 } as const;
 
 // Difficulty presets. Normal = baseline game values.
 //  - resourceMultiplier: scales starting O2 / water / food
@@ -142,9 +140,9 @@ export const DIFFICULTY_SETTINGS: Record<
   },
   hard: {
     label: 'Difícil',
-    description: 'Reservas limitadas, radiación intensa y emergencias frecuentes.',
+  description: 'Reservas limitadas, radiación intensa y emergencias frecuentes.',
     resourceMultiplier: 0.85,
-    radiationMultiplier: 1.25,
+    radiationMultiplier: 1.3,
     eventRateMultiplier: 1.2,
     startingPowerFraction: 0.35,
   },
@@ -159,7 +157,7 @@ export const LUNAR_PHYSICS: PhysicsConstants = {
   night_duration_hours: LUNAR_ENVIRONMENT.night_duration_hours,
   solar_panel_output_w_per_m2: LUNAR_ENVIRONMENT.solar_panel_output_w_per_m2,
   unshielded_radiation_mSv_per_year: LUNAR_ENVIRONMENT.unshielded_radiation_dose_mSv_per_year,
-  radiation_limit_mSv_per_year: RADIATION_SHIELDING.yearly_exposure_limit_mSv,
+  radiation_limit_mSv_per_year: RADIATION_SHIELDING.mission_year_budget_mSv,
 };
 
 // Martian-specific power physics
@@ -171,7 +169,7 @@ export const MARS_PHYSICS: PhysicsConstants = {
   night_duration_hours: MARS_ENVIRONMENT.night_duration_hours,
   solar_panel_output_w_per_m2: MARS_ENVIRONMENT.solar_panel_output_w_per_m2,
   unshielded_radiation_mSv_per_year: MARS_ENVIRONMENT.unshielded_radiation_dose_mSv_per_year,
-  radiation_limit_mSv_per_year: RADIATION_SHIELDING.yearly_exposure_limit_mSv,
+  radiation_limit_mSv_per_year: RADIATION_SHIELDING.mission_year_budget_mSv,
 };
 
 // Crew role modifiers

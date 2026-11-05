@@ -10,6 +10,7 @@ import {
   EventEffectSpec,
   SystemHealth,
   SystemStatus,
+  MaintenanceStation,
 } from './types';
 import type { MissionObjective } from './types';
 import { Physics, EffectModifiers, NO_EFFECTS } from './Physics';
@@ -78,7 +79,7 @@ export class MissionSimulator {
       resources: {
         oxygen: 500 * diff.resourceMultiplier, // kg - enough for ~600 person-days (normal)
         water: 3000 * diff.resourceMultiplier, // liters - enough for ~800 person-days (normal)
-        food: 1000 * diff.resourceMultiplier, // kg dry mass (normal)
+        food: 1300 * diff.resourceMultiplier, // kg edible stores; buffers morale until year end on standard crews
         power: POWER_SYSTEM.battery_capacity_kwh * diff.startingPowerFraction, // kWh (normal: half of capacity)
         co2_stored: 0,
       },
@@ -104,6 +105,7 @@ export class MissionSimulator {
       radiationExposure: 0,
       difficulty: this.difficulty,
       activeEffects: [],
+      completedMaintenanceTasks: [],
       objectives: [],
       outcome: null,
     };
@@ -114,6 +116,7 @@ export class MissionSimulator {
     if (save?.schemaVersion !== SAVE_SCHEMA_VERSION || !save.state) throw new Error('Partida guardada incompatible');
     const simulator = new MissionSimulator(save.state.location, save.state.crew.length, save.state.difficulty);
     simulator.state = JSON.parse(JSON.stringify(save.state)) as SimulationState;
+    simulator.state.completedMaintenanceTasks ??= [];
     simulator.nextEffectId = save.nextEffectId;
     simulator.events.restore(save.eventCooldowns ?? {});
     return simulator;
@@ -226,7 +229,7 @@ export class MissionSimulator {
         title: `Resuelto: ${e.title}`,
         description: e.kind === 'crop_disease'
           ? `El módulo hidropónico terminó la descontaminación con ${this.state.allocation.foodProductionPower}% de energía asignada; el tratamiento ahorró aproximadamente ${(e.hoursSavedByEnergy ?? 0).toFixed(1)} h.`
-          : `El efecto terminó y se reanudan las operaciones normales. ${this.state.allocation.maintenancePersonnel.length ? `Participaron ${this.state.crew.filter(c => this.state.allocation.maintenancePersonnel.includes(c.role)).map(c => c.name).join(', ')}; la tripulación ahorró aproximadamente ${(e.hoursSavedByCrew ?? 0).toFixed(1)} h.` : 'La reparación se completó sin personal asignado.'}`,
+          : `El efecto terminó y se reanudan las operaciones normales. ${this.state.allocation.maintenancePersonnel.length ? `Participaron ${this.state.crew.filter(c => this.state.allocation.maintenancePersonnel.includes(c.role)).map(c => c.name).join(', ')}; la tripulación ahorró aproximadamente ${(e.hoursSavedByCrew ?? 0).toFixed(1)} h.` : 'La reparación se completó sin personal asignado.'} ${e.hoursSavedByTask ? `Las tareas manuales ahorraron ${e.hoursSavedByTask.toFixed(1)} h.` : ''}`,
       });
     }
     this.state.activeEffects = kept;
@@ -252,6 +255,82 @@ export class MissionSimulator {
       }
     }
     this.state.systems = sys;
+  }
+
+  /** Resolve one hands-on station task. Each station can be used once per mission day in the UI. */
+  completeMaintenanceTask(station: MaintenanceStation, crewId?: string): string {
+    if (this.state.missionSuccess !== null) return 'La misión ya terminó.';
+    this.state.completedMaintenanceTasks ??= [];
+    if (this.state.completedMaintenanceTasks.some((task) => task.day === this.state.dayNumber && task.station === station)) {
+      return 'Esta estación ya se atendió hoy.';
+    }
+
+    const matchingEffect = this.state.activeEffects.find((effect) => {
+      if (station === 'power') return effect.kind === 'dust_storm' || (effect.kind === 'equipment_failure' && effect.system === 'power');
+      if (station === 'lifeSupport') return effect.kind === 'water_leak' || (effect.kind === 'equipment_failure' && effect.system === 'lifeSupport');
+      if (station === 'hydroponics') return effect.kind === 'crop_disease' || (effect.kind === 'equipment_failure' && effect.system === 'foodProduction');
+      if (station === 'radiationShield') return effect.kind === 'radiation_spike' || (effect.kind === 'equipment_failure' && effect.system === 'radiationShield');
+      if (station === 'water') return effect.kind === 'water_leak';
+      return effect.kind === 'communication_loss';
+    });
+
+    const labels: Record<MaintenanceStation, string> = {
+      power: 'Restablecer el bus de energía',
+      lifeSupport: 'Calibrar soporte vital',
+      hydroponics: 'Descontaminar hidroponía',
+      communications: 'Alinear la antena de comunicaciones',
+      radiationShield: 'Sincronizar el blindaje',
+      water: 'Recuperar el circuito de agua',
+    };
+    const assignedCrew = this.state.crew.find(member => member.id === crewId);
+    const expertRoles: Record<MaintenanceStation, AstronautRole[]> = {
+      power: ['engineer'], lifeSupport: ['engineer'], hydroponics: ['scientist', 'botanist'],
+      communications: ['commander'], radiationShield: ['engineer', 'geologist'], water: ['engineer', 'doctor'],
+    };
+    let description: string;
+    if (matchingEffect) {
+      const expertiseBonus = assignedCrew && expertRoles[station].includes(assignedCrew.role) ? 4 : 0;
+      const savedHours = Math.min(6 + expertiseBonus, matchingEffect.remainingHours);
+      matchingEffect.remainingHours -= savedHours;
+      matchingEffect.hoursSavedByTask = (matchingEffect.hoursSavedByTask ?? 0) + savedHours;
+      description = `${assignedCrew ? `${assignedCrew.name} ${expertiseBonus ? 'aplicó su especialidad y ' : ''}` : ''}aceleró la reparación de ${matchingEffect.title} en ${savedHours.toFixed(0)} h${assignedCrew ? '. Su estrés aumentó 3 puntos.' : '.'}`;
+      if (assignedCrew) assignedCrew.stress = clamp(assignedCrew.stress + 3, 0, 100);
+      if (matchingEffect.remainingHours <= 0) {
+        if (matchingEffect.moraleApplied) this.state.crew.forEach((member) => { member.morale = clamp(member.morale + matchingEffect.moraleApplied!, 0, 100); });
+        this.state.activeEffects = this.state.activeEffects.filter((effect) => effect.id !== matchingEffect.id);
+        description += ' El sistema volvió a operar.';
+      }
+      this.refreshSystemStatus();
+    } else {
+      switch (station) {
+        case 'power': {
+          const recovered = Math.min(6, POWER_SYSTEM.battery_capacity_kwh - this.state.resources.power);
+          this.state.resources.power += recovered;
+          description = `Diagnóstico preventivo: la reserva eléctrica subió ${recovered.toFixed(1)} kWh.`;
+          break;
+        }
+        case 'lifeSupport': this.state.resources.oxygen += 2; description = 'Calibración preventiva: el oxígeno subió 2 kg.'; break;
+        case 'hydroponics': this.state.resources.food += 3; description = 'La cosecha de emergencia aportó 3 kg de alimentos.'; break;
+        case 'communications': this.state.crew.forEach((member) => { member.morale = clamp(member.morale + 2, 0, 100); }); description = 'Se restableció el enlace y la moral subió 2 puntos.'; break;
+        case 'radiationShield': this.state.radiationExposure = Math.max(0, this.state.radiationExposure - 1); description = 'La calibración redujo en 1 mSv la dosis acumulada de la misión.'; break;
+        case 'water': this.state.resources.water += 20; description = 'El circuito de recuperación aportó 20 litros de agua.'; break;
+      }
+      if (assignedCrew) {
+        assignedCrew.stress = clamp(assignedCrew.stress + 1, 0, 100);
+        description += ` ${assignedCrew.name} completó el diagnóstico; estrés +1.`;
+      }
+    }
+
+    this.state.completedMaintenanceTasks.push({ day: this.state.dayNumber, station });
+
+    this.state.eventLog.push({
+      timestamp: { day: this.state.dayNumber, hour: this.state.hourOfDay },
+      type: 'success',
+      title: `Tarea completada: ${labels[station]}`,
+      description,
+    });
+    this.state.objectives = this.evaluateObjectives(false);
+    return description;
   }
 
   // Update simulation by one hour
@@ -318,7 +397,7 @@ export class MissionSimulator {
       return;
     }
 
-    // Check mission success: one full Earth year (8760 h). A lunar "day" is 354 h long,
+    // Check mission success: one full Earth year (8760 h). A lunar day/night cycle is about 709 h,
     // so counting 365 dayNumbers would mean ~14 years on the Moon.
     const elapsedEarthDays =
       ((this.state.dayNumber - 1) * this.dayNightCycle + this.state.hourOfDay) / 24;
@@ -365,17 +444,17 @@ export class MissionSimulator {
 
       // Stress from radiation
       if (this.state.radiationExposure > this.physics['constants'].radiation_limit_mSv_per_year * 0.8) {
-        stressChange += 0.05;
+        stressChange += 0.005;
       }
 
       astronaut.stress = Math.max(0, Math.min(100, astronaut.stress + stressChange));
 
       // Morale decreases with stress
-      let moraleChange = -0.05;
+      let moraleChange = -0.005;
 
       // Morale boost from successes (added via events)
       if (astronaut.stress > 80) moraleChange -= 0.1;
-      if (this.state.resources.food > 500) moraleChange += 0.05;
+      if (this.state.resources.food > 500) moraleChange += 0.005;
 
       astronaut.morale = Math.max(0, Math.min(100, astronaut.morale + moraleChange));
 

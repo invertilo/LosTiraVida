@@ -16,6 +16,49 @@ const mkCrew = (n = 4, role: Astronaut['role'] = 'commander'): Astronaut[] =>
 // Internal access for test harnessing only (state is private by design).
 const internals = (s: MissionSimulator) => s as unknown as { state: SimulationState };
 
+describe('Hands-on ship maintenance', () => {
+  it('adds water, records the task for the sol and restores that record from a save', () => {
+    const simulator = new MissionSimulator('mars');
+    const before = simulator.getState().resources.water;
+    expect(simulator.completeMaintenanceTask('water')).toContain('20 litros');
+    expect(simulator.getState().resources.water).toBe(before + 20);
+    expect(simulator.completeMaintenanceTask('water')).toContain('ya se atendió hoy');
+
+    const saved = simulator.serialize();
+    const restored = MissionSimulator.restore(saved);
+    expect(restored.completeMaintenanceTask('water')).toContain('ya se atendió hoy');
+  });
+
+  it('prevents more damage by advancing an active repair and logs the time saved', () => {
+    const simulator = new MissionSimulator('mars');
+    const state = internals(simulator).state;
+    state.activeEffects.push({ kind: 'equipment_failure', durationHours: 10, magnitude: 0.3, system: 'power', id: 99, title: 'Fallo del bus eléctrico', remainingHours: 10 });
+    const battery = state.resources.power;
+
+    expect(simulator.completeMaintenanceTask('power')).toContain('6 h');
+    expect(internals(simulator).state.activeEffects[0].remainingHours).toBe(4);
+    expect(simulator.getState().resources.power).toBe(battery);
+    expect(simulator.getEvents().slice(-1)[0]?.description).toContain('6 h');
+  });
+
+  it('lets the assigned specialist accelerate a repair further and pays a stress cost', () => {
+    const simulator = new MissionSimulator('mars');
+    const state = internals(simulator).state;
+    state.activeEffects.push({ kind: 'equipment_failure', durationHours: 20, magnitude: 0.3, system: 'power', id: 99, title: 'Fallo del bus eléctrico', remainingHours: 20 });
+
+    expect(simulator.completeMaintenanceTask('power', 'crew_1')).toContain('10 h');
+    expect(simulator.getState().crew.find(member => member.id === 'crew_1')?.stress).toBe(28);
+    expect(internals(simulator).state.activeEffects[0]?.remainingHours).toBe(10);
+  });
+
+  it('reduces accumulated radiation without making the dose negative', () => {
+    const simulator = new MissionSimulator('moon');
+    internals(simulator).state.radiationExposure = 0.5;
+    expect(simulator.completeMaintenanceTask('radiationShield')).toContain('1 mSv');
+    expect(simulator.getState().radiationExposure).toBe(0);
+  });
+});
+
 /** Run N hourly steps with Math.random pinned, optionally refilling resources every step. */
 function run(s: MissionSimulator, hours: number, refill = false) {
   for (let i = 0; i < hours && s.isMissionRunning(); i++) {
@@ -48,7 +91,7 @@ describe('Physics', () => {
   });
 
   it('solar: zero at night, zero at dawn, peak at local noon (Moon and Mars)', () => {
-    for (const [p, cycle, env] of [[moon, 354, LUNAR_PHYSICS], [mars, 24.6, MARS_PHYSICS]] as const) {
+    for (const [p, cycle, env] of [[moon, LUNAR_ENVIRONMENT.day_night_cycle_hours, LUNAR_PHYSICS], [mars, 24.6, MARS_PHYSICS]] as const) {
       const peak = (POWER_SYSTEM.solar_panel_area_m2 * env.solar_panel_output_w_per_m2) / 1000;
       expect(p.calculateSolarPowerGeneration(0, cycle)).toBeCloseTo(0, 6);
       expect(p.calculateSolarPowerGeneration(cycle / 4, cycle)).toBeCloseTo(peak, 6);
@@ -78,8 +121,8 @@ describe('Physics', () => {
     expect(moon.calculateFoodProduction(0, 1).foodProduced).toBe(0);
     const half = moon.calculateFoodProduction(50, 1).foodProduced;
     expect(moon.calculateFoodProduction(100, 1).foodProduced).toBeCloseTo(half * 2, 10);
-    // 30 m2 * 4 kg/m2/yr / 365 = 0.329 kg/day at 100%
-    expect(moon.calculateFoodProduction(100, 1).foodProduced).toBeCloseTo(0.3288, 3);
+    // 30 m2 * 20 kg/m2/yr / 365 = 1.644 kg/day at 100%
+    expect(moon.calculateFoodProduction(100, 1).foodProduced).toBeCloseTo(1.6438, 3);
   });
   it('harvest countdown is within (0, growth cycle]', () => {
     for (let d = 0; d < 100; d++) {
@@ -91,9 +134,9 @@ describe('Physics', () => {
 
   it('radiation: more shield power gives lower dose, capped at 90% shielding', () => {
     expect(moon.calculateRadiationExposure(0, 100)).toBeLessThan(moon.calculateRadiationExposure(0, 0));
-    // 233 * (1-0.6) / 8760 mSv/h with no extra shielding
-    expect(moon.calculateRadiationExposure(0, 0)).toBeCloseTo((233 * 0.4) / 8760, 8);
-    expect(moon.calculateRadiationExposure(0, 1e6)).toBeCloseTo((233 * 0.1) / 8760, 8);
+    // Chang'E-4 lunar surface equivalent dose: 500 * (1-0.6) / 8760 mSv/h without active shielding.
+    expect(moon.calculateRadiationExposure(0, 0)).toBeCloseTo((500 * 0.4) / 8760, 8);
+    expect(moon.calculateRadiationExposure(0, 1e6)).toBeCloseTo((500 * 0.1) / 8760, 8);
   });
 
   it('updateResources never goes negative and clamps battery to capacity', () => {
@@ -155,7 +198,7 @@ describe('MissionSimulator initialisation', () => {
     expect(st.location).toBe('moon');
     expect(st.crew).toHaveLength(4);
     expect(st.dayNumber).toBe(1);
-    expect(st.resources).toMatchObject({ oxygen: 500, water: 3000, food: 1000, power: 10 });
+    expect(st.resources).toMatchObject({ oxygen: 500, water: 3000, food: 1300, power: 10 });
     expect(st.missionSuccess).toBeNull();
     expect(s.isMissionRunning()).toBe(true);
     expect(st.crew.every(c => c.morale === 75 && c.stress === 25)).toBe(true);
@@ -255,34 +298,30 @@ describe('Edge cases', () => {
       expect(s.getEvents().slice(-1)[0]?.description).not.toMatch(/Batería/);
     }
   });
-  it('default allocation wins quietly; reducing shielding to 30% fails the lunar radiation objective', () => {
+  it('default allocation wins quietly; reducing shielding to 20% fails the radiation objective on both worlds', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.99);
     for (const loc of ['moon', 'mars'] as const) {
       const s = new MissionSimulator(loc); run(s, 24 * 400);
       expect(s.getMissionResult()).toBe(true);
       const old = new MissionSimulator(loc);
-      old.setResourceAllocation({ lifeSupportPower: 40, radiationShieldPower: 30, foodProductionPower: 20 });
+      old.setResourceAllocation({ lifeSupportPower: 40, radiationShieldPower: 20, foodProductionPower: 20 });
       run(old, 24 * 400);
-      if (loc === 'moon') {
-        expect(old.getMissionResult()).toBe(false);
-        expect(old.getEvents().slice(-1)[0]?.description).toMatch(/radiación/);
-      } else {
-        expect(old.getMissionResult()).toBe(true);
-      }
+      expect(old.getMissionResult()).toBe(false);
+      expect(old.getEvents().slice(-1)[0]?.description).toMatch(/radiación/);
     }
   });
   it('radiation exceeds the 50 mSv/yr limit within ~1 year on the Moon at default shielding', () => {
     // ~79 mSv per 8760 h at 60%+6% shielding
-    const hoursToLimit = 50 / ((233 * (1 - 0.66)) / 8760);
+    const hoursToLimit = 50 / ((500 * (1 - 0.66)) / 8760);
     expect(hoursToLimit).toBeLessThan(8760);
   });
-  it('morale: stress rises and morale falls steadily with no events', () => {
+  it('stress rises slowly while morale stays steady with abundant food and no events', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.99);
     const s = new MissionSimulator('moon');
     run(s, 100, true);
     const c = s.getState().crew[0];
     expect(c.stress).toBeGreaterThan(25);
-    expect(c.morale).toBeLessThan(80); // +0.05 food bonus - 0.05 decay => flat while food > 500
+    expect(c.morale).toBeCloseTo(75, 5); // Food bonus offsets the small background morale drift.
   });
   it('low resources increase stress faster than abundant resources', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.99);

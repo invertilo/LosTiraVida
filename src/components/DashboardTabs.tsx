@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 
 const TABS = [
-  ['exterior', 'EXTERIOR'], ['habitat', 'HÁBITAT'], ['management', 'GESTIÓN'], ['crew', 'TRIPULACIÓN'], ['log', 'BITÁCORA'],
+  ['exterior', 'EXTERIOR'], ['habitat', 'HÁBITAT'], ['operations', 'OPERACIONES'], ['management', 'GESTIÓN'], ['crew', 'TRIPULACIÓN'], ['log', 'BITÁCORA'],
 ] as const;
 export type DashboardTab = (typeof TABS)[number][0];
 

@@ -8,6 +8,7 @@ import {
   elapsedEarthDays,
   missionStatus,
   MISSION_LENGTH_EARTH_DAYS,
+  NASA_CAREER_RADIATION_LIMIT_MSV,
   RADIATION_LIMIT_MSV,
   STATUS_COPY,
 } from '../lib/mission';
@@ -138,17 +139,16 @@ export function MissionStats({ state, index }: { state: SimulationState; index?:
               <PixelBar
                 value={doseFrac}
                 color={toneFill[doseTone]}
-                label="Dosis de radiación respecto al límite anual"
-                valueText={`${dose.toFixed(1)} de ${RADIATION_LIMIT_MSV} milisieverts`}
+                label="Dosis de radiación respecto al presupuesto estricto de misión"
+                valueText={`${dose.toFixed(1)} de ${RADIATION_LIMIT_MSV} mSv del reto de misión`}
                 segments={24}
                 height={16}
               />
-              <p className="t-small text-px-dim">Límite anual de exposición NASA</p>
+              <p className="t-small text-px-dim">Reto: {RADIATION_LIMIT_MSV} mSv/año · NASA: {NASA_CAREER_RADIATION_LIMIT_MSV} mSv de carrera</p>
             </div>
           </div>
           <Explain summary="Cómo leer la misión">
-            Sobrevive 365 días terrestres. El ciclo cambia la energía solar y la radiación acumulada nunca debe superar
-            {` ${RADIATION_LIMIT_MSV} mSv`}. Si una barra se vuelve amarilla o roja, necesita atención.
+            Sobrevive 365 días terrestres. El reto del juego mantiene la dosis bajo {` ${RADIATION_LIMIT_MSV} mSv/año`}; NASA fija un límite total de carrera de {`${NASA_CAREER_RADIATION_LIMIT_MSV} mSv`}. Si una barra se vuelve amarilla o roja, necesita atención.
           </Explain>
         </div>
       </div>

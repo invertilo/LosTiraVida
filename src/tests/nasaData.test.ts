@@ -9,12 +9,10 @@ import {
   LUNAR_PHYSICS,
   MARS_PHYSICS,
   CREW_MODIFIERS,
+  HABITAT_RADIATION_FACTOR,
 } from '../engine/NASAData';
 
 // Reference values (NASA BVAD / ISS / MSL-RAD / Chang'E-4 LND) are noted per test.
-// Tests wrapped in `it.fails` document a KNOWN discrepancy between the data file and the
-// real source: they pass while the data is wrong and will start failing once it is fixed
-// (at which point change them to plain `it`).
 
 describe('Life support (NASA BVAD, NASA/TP-2015-218570)', () => {
   it('O2 consumption is 0.84 kg/person/day', () => {
@@ -50,24 +48,22 @@ describe('Environment', () => {
   it('Mars solar flux is ~43% of Earth (590/1361 W/m2)', () => {
     expect(MARS_ENVIRONMENT.solar_panel_output_w_per_m2).toBeLessThan(LUNAR_ENVIRONMENT.solar_panel_output_w_per_m2);
   });
-  it.fails('KNOWN ISSUE: lunar night should be ~354 h (half of a 29.53 day synodic month), file has 177', () => {
-    expect(LUNAR_ENVIRONMENT.night_duration_hours).toBeCloseTo(354, -1);
+  it('lunar night lasts about 354.4 h (half of a 29.53059-day synodic month)', () => {
+    expect(LUNAR_ENVIRONMENT.night_duration_hours).toBeCloseTo(354.367, 0);
   });
   it('lunar day/night temperature extremes are plausible (~+120 / -170 C)', () => {
     expect(LUNAR_ENVIRONMENT.surface_temperature_day_celsius).toBe(120);
     expect(LUNAR_ENVIRONMENT.surface_temperature_night_celsius).toBe(-170);
   });
-  // The file calls 354 h the full day/night cycle and 177 h the night. In reality 354 h is the NIGHT
-  // alone and the full cycle is ~708 h.
-  it.fails('KNOWN ISSUE: lunar full cycle should be ~708 h, not 354 h', () => {
-    expect(LUNAR_ENVIRONMENT.day_night_cycle_hours).toBeCloseTo(708, -1);
+  it('lunar day/night cycle is one full synodic month (~708.7 h)', () => {
+    expect(LUNAR_ENVIRONMENT.day_night_cycle_hours).toBeCloseTo(708.734, 0);
+    expect(LUNAR_ENVIRONMENT.day_duration_hours).toBeCloseTo(LUNAR_ENVIRONMENT.night_duration_hours, 8);
   });
-  // Chang'E-4 LND measured ~1.37 mSv/day (~500 mSv/yr); MSL RAD on Mars surface ~0.67 mSv/day (~243 mSv/yr).
-  it.fails('KNOWN ISSUE: lunar unshielded dose should exceed Mars and be ~500 mSv/yr', () => {
+  it('surface dose inputs reflect Chang’E-4 LND and MSL RAD measurements', () => {
     expect(LUNAR_ENVIRONMENT.unshielded_radiation_dose_mSv_per_year).toBeGreaterThan(400);
-  });
-  it.fails('KNOWN ISSUE: Mars surface dose should be ~240 mSv/yr (MSL RAD)', () => {
-    expect(MARS_ENVIRONMENT.unshielded_radiation_dose_mSv_per_year).toBeGreaterThan(220);
+    expect(LUNAR_ENVIRONMENT.unshielded_radiation_dose_mSv_per_year).toBe(500);
+    expect(MARS_ENVIRONMENT.unshielded_radiation_dose_mSv_per_year).toBeCloseTo(240, 0);
+    expect(LUNAR_ENVIRONMENT.unshielded_radiation_dose_mSv_per_year).toBeGreaterThan(MARS_ENVIRONMENT.unshielded_radiation_dose_mSv_per_year);
   });
   it('dust storm severity probabilities sum to 1', () => {
     const s = MARS_ENVIRONMENT.dust_storm_severity;
@@ -108,13 +104,11 @@ describe('Radiation', () => {
   it('current structure reduction is 60%', () => {
     expect(RADIATION_SHIELDING.current_shielding_reduction).toBe(0.6);
   });
-  it('annual limit used by the engine is 50 mSv', () => {
+  it('game challenge uses a strict 50 mSv mission-year budget and keeps NASA career limit separate', () => {
     expect(LUNAR_PHYSICS.radiation_limit_mSv_per_year).toBe(50);
-  });
-  // NASA's current spaceflight standard is a 600 mSv career limit (NASA-STD-3001 Vol.1 rev. A);
-  // 50 mSv/yr is the terrestrial occupational limit (NCRP/ICRP) and is far stricter than for spaceflight.
-  it.fails('KNOWN ISSUE: 50 mSv/yr is the ground occupational limit, not NASA spaceflight limit', () => {
-    expect(RADIATION_SHIELDING.yearly_exposure_limit_mSv).toBeGreaterThanOrEqual(250);
+    expect(RADIATION_SHIELDING.career_exposure_limit_mSv).toBe(600);
+    expect(RADIATION_SHIELDING.mission_year_budget_mSv).toBe(50);
+    expect(HABITAT_RADIATION_FACTOR.moon).toBeLessThan(HABITAT_RADIATION_FACTOR.mars);
   });
 });
 
@@ -124,18 +118,15 @@ describe('Food production', () => {
     expect(FOOD_PRODUCTION.growth_cycle_days).toBeLessThan(120);
     expect(FOOD_PRODUCTION.crop_failure_risk_per_cycle).toBeLessThan(0.2);
   });
-  it('hydroponics alone cannot feed a crew of 4 (documents scale of gap)', () => {
+  it('hydroponics alone cannot fully feed a crew of 4 (documents the scale of the gap)', () => {
     const perDay = (FOOD_PRODUCTION.planting_area_m2 * FOOD_PRODUCTION.hydroponic_yield_kg_per_m2_per_year) / 365;
     const crewNeed = 4 * LIFE_SUPPORT_DATA.food_dry_mass_kg_per_person_per_day;
-    expect(perDay).toBeLessThan(crewNeed / 5);
+    expect(perDay).toBeLessThan(crewNeed);
   });
-  // Lettuce fresh-mass yields in controlled environments are tens of kg/m2/yr (and ISS Veggie is much lower);
-  // 4 kg/m2/yr is well below either, and fresh vs dry mass is not distinguished.
-  it.fails('KNOWN ISSUE: lettuce hydroponic yield of 4 kg/m2/yr is far below published values (>=20)', () => {
+  it('uses a conservative 20 kg/m2/year edible crop yield as a simplified game parameter', () => {
     expect(FOOD_PRODUCTION.hydroponic_yield_kg_per_m2_per_year).toBeGreaterThanOrEqual(20);
   });
-  // Photosynthesis: 6CO2+6H2O -> C6H12O6+6O2 gives 192/180 = ~1.07 kg O2 per kg carbohydrate biomass.
-  it.fails('KNOWN ISSUE: O2 per kg biomass should be ~1.07, not 0.73', () => {
+  it('uses the glucose-equivalent photosynthesis mass ratio for oxygen', () => {
     expect(FOOD_PRODUCTION.o2_production_kg_per_kg_biomass).toBeCloseTo(1.07, 1);
   });
 });

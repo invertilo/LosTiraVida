@@ -1,5 +1,5 @@
 // Active event effects: what is currently hurting the outpost, for how long, and who can fix it.
-import type { ActiveEffect, AstronautRole, SimulationState } from '../engine/types';
+import type { ActiveEffect, AstronautRole, MaintenanceStation, SimulationState } from '../engine/types';
 import { ROLE_LABEL } from '../lib/mission';
 
 const EFFECT_LABEL: Record<ActiveEffect['kind'], (e: ActiveEffect) => string> = {
@@ -19,6 +19,22 @@ const SYSTEM_NAME = {
 } as const;
 
 const REPAIRABLE = new Set<ActiveEffect['kind']>(['equipment_failure', 'water_leak']);
+function stationFor(e: ActiveEffect): MaintenanceStation {
+  if (e.kind === 'water_leak') return 'water';
+  if (e.kind === 'dust_storm' || (e.kind === 'equipment_failure' && e.system === 'power')) return 'power';
+  if (e.kind === 'radiation_spike' || (e.kind === 'equipment_failure' && e.system === 'radiationShield')) return 'radiationShield';
+  if (e.kind === 'crop_disease' || (e.kind === 'equipment_failure' && e.system === 'foodProduction')) return 'hydroponics';
+  if (e.kind === 'communication_loss') return 'communications';
+  return 'lifeSupport';
+}
+function consequence(e: ActiveEffect) {
+  if (e.kind === 'water_leak') return 'La reserva de agua sigue bajando.';
+  if (e.kind === 'dust_storm') return 'La recarga solar está reducida.';
+  if (e.kind === 'radiation_spike') return 'La tripulación acumula dosis más rápido.';
+  if (e.kind === 'crop_disease') return 'La cosecha está detenida.';
+  if (e.kind === 'communication_loss') return 'La moral está afectada.';
+  return 'El sistema afectado funciona con menos rendimiento.';
+}
 const ROLE_SHORT: Record<AstronautRole, string> = {
   commander: 'Comandante',
   engineer: 'Ingeniero',
@@ -30,17 +46,18 @@ const ROLE_SHORT: Record<AstronautRole, string> = {
 
 function formatRemaining(hours: number) {
   const h = Math.ceil(hours);
-  return h >= 48 ? `${Math.ceil(h / 24)} d restantes` : `${h} h restantes`;
+  return h >= 48 ? `se resuelve en ~${Math.ceil(h / 24)} d` : `se resuelve en ~${h} h`;
 }
 
 interface Props {
   state: SimulationState;
   onAssignCrew: (role: AstronautRole, assignment: 'maintenance' | 'rest') => void;
   onOpenManagement: () => void;
+  onOpenOperations: (station: MaintenanceStation) => void;
   disabled?: boolean;
 }
 
-export function ActiveEffects({ state, onAssignCrew, onOpenManagement, disabled }: Props) {
+export function ActiveEffects({ state, onAssignCrew, onOpenManagement, onOpenOperations, disabled }: Props) {
   const { activeEffects: effects, crew, allocation } = state;
   if (!effects.length) return null;
   const needsRepair = effects.some((e) => REPAIRABLE.has(e.kind));
@@ -56,9 +73,11 @@ export function ActiveEffects({ state, onAssignCrew, onOpenManagement, disabled 
       <h2 className="t-title text-px-yellow mb-3 blink">! Alertas activas ({effects.length})</h2>
       <ul className="active-effects-list flex flex-wrap gap-2">
         {effects.map((e) => (
-          <li key={e.id} className="tile8 px-3 py-1.5 t-small text-px-white">
-            <span className="text-px-yellow">{e.title}</span>
-            <span className="text-px-dim"> · {EFFECT_LABEL[e.kind](e)} · {formatRemaining(e.remainingHours)}</span>
+          <li key={e.id} className="tile8 active-effect-card px-3 py-2 t-small text-px-white">
+            <div><span className="text-px-yellow">{e.title}</span>
+            <span className="text-px-dim"> · {EFFECT_LABEL[e.kind](e)} · {formatRemaining(e.remainingHours)}</span></div>
+            <small className="active-effect-risk">{consequence(e)}</small>
+            <button type="button" className="btn8 btn8-secondary active-effect-action" onClick={() => onOpenOperations(stationFor(e))} disabled={disabled}>IR A {stationFor(e) === 'water' ? 'RECICLAJE' : stationFor(e) === 'power' ? 'ENERGÍA' : stationFor(e) === 'radiationShield' ? 'BLINDAJE' : stationFor(e) === 'hydroponics' ? 'INVERNADERO' : stationFor(e) === 'communications' ? 'ANTENA' : 'SOPORTE VITAL'}</button>
           </li>
         ))}
       </ul>

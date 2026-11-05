@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { Difficulty, LocationType, SimulationEvent } from '../engine/types';
+import type { MaintenanceStation } from '../engine/types';
 import type { SimulatorSaveData } from '../engine/SimulationState';
 import { useSimulation } from '../hooks/useSimulation';
 import { snapFast, snapPop } from '../lib/motion';
@@ -25,6 +26,8 @@ import { DashboardTabs, type DashboardTab } from './DashboardTabs';
 import { ExteriorScene } from './ExteriorScene';
 import { MissionObjectives } from './MissionObjectives';
 import { EventEffectsLayer } from './EventEffectsLayer';
+import { OperationsDeck } from './OperationsDeck';
+import { SystemCauseMap } from './SystemCauseMap';
 import { CloseIcon, CriticalIcon, FailureIcon, QuestionIcon } from './icons';
 
 interface OutpostDashboardProps {
@@ -49,13 +52,14 @@ function isTypingTarget(t: EventTarget | null) {
 
 export function OutpostDashboard({ location, crewCount, difficulty = 'normal', onExit, onOpenTutorial, tutorialOpen, savedGame = null }: OutpostDashboardProps) {
   const [pauseOnWarnings, setPauseOnWarnings] = useState(() => { try { return localStorage.getItem('outpost.pauseWarnings') === '1'; } catch { return false; } });
-  const { state, isRunning, toggleRunning, speed, setSpeed, setAllocation, assignCrew, restart } = useSimulation(location, crewCount, difficulty, savedGame, pauseOnWarnings);
+  const { state, isRunning, toggleRunning, speed, setSpeed, setAllocation, assignCrew, completeTask, restart } = useSimulation(location, crewCount, difficulty, savedGame, pauseOnWarnings);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [resultOpen, setResultOpen] = useState(false);
   const [restartRequest, setRestartRequest] = useState(0);
   const [announcement, setAnnouncement] = useState('');
   const [glitch, setGlitch] = useState(false);
   const [activeTab, setActiveTab] = useState<DashboardTab>('exterior');
+  const [focusStation, setFocusStation] = useState<MaintenanceStation | null>(null);
   const [reviewedEvents, setReviewedEvents] = useState(savedGame?.state.eventLog.length ?? 0);
   const seenEvents = useRef(0);
 
@@ -118,6 +122,12 @@ export function OutpostDashboard({ location, crewCount, difficulty = 'normal', o
     restart();
     setResultOpen(false);
   }, [restart]);
+
+  const openOperationsForStation = useCallback((station: MaintenanceStation) => {
+    setFocusStation(station);
+    setActiveTab('operations');
+  }, []);
+  const clearFocusStation = useCallback(() => setFocusStation(null), []);
 
   // Keyboard shortcuts.
   useEffect(() => {
@@ -220,10 +230,11 @@ export function OutpostDashboard({ location, crewCount, difficulty = 'normal', o
       </div>
 
       <div className="mx-auto max-w-[1440px] p-2 sm:p-4">
-        <ActiveEffects state={state} onAssignCrew={assignCrew} onOpenManagement={() => setActiveTab('management')} disabled={ended} />
+        <ActiveEffects state={state} onAssignCrew={assignCrew} onOpenManagement={() => setActiveTab('management')} onOpenOperations={openOperationsForStation} disabled={ended} />
         <DashboardTabs active={activeTab} onChange={tab => { setActiveTab(tab); if (tab === 'log') setReviewedEvents(state.eventLog.length); }} unread={Math.max(0, state.eventLog.length - reviewedEvents)} alerted={[
           ...(state.systems.power !== 'operational' || state.systems.communications !== 'operational' ? ['exterior' as const] : []),
           ...(state.systems.lifeSupport !== 'operational' || state.systems.foodProduction !== 'operational' ? ['habitat' as const] : []),
+          ...(state.activeEffects.length > 0 ? ['operations' as const] : []),
           ...(state.systems.radiationShield !== 'operational' || state.systems.power !== 'operational' ? ['management' as const] : []),
           ...(state.systems.lifeSupport !== 'operational' ? ['crew' as const] : []),
         ]} />
@@ -231,7 +242,8 @@ export function OutpostDashboard({ location, crewCount, difficulty = 'normal', o
           <div id="dashboard-panel" role="tabpanel" aria-labelledby={`tab-${activeTab}`} tabIndex={0}>
             {activeTab === 'exterior' && <ExteriorScene state={state} />}
             {activeTab === 'habitat' && <HabitatScene state={state} isRunning={isRunning} />}
-            {activeTab === 'management' && <div className="tab-content-grid"><MissionStats state={state} /><MissionObjectives state={state} /><ResourceGauges state={state} /><AllocationPanel allocation={state.allocation} onChange={setAllocation} location={location} crewCount={state.crew.length} disabled={ended} cropDiseaseActive={state.activeEffects.some(effect => effect.kind === 'crop_disease')} /></div>}
+            <div hidden={activeTab !== 'operations'}><OperationsDeck state={state} onCompleteTask={completeTask} disabled={ended} active={activeTab === 'operations'} focusStation={focusStation} onFocusHandled={clearFocusStation} /></div>
+            {activeTab === 'management' && <div className="tab-content-grid"><MissionStats state={state} /><MissionObjectives state={state} /><SystemCauseMap state={state} /><ResourceGauges state={state} /><AllocationPanel allocation={state.allocation} onChange={setAllocation} location={location} crewCount={state.crew.length} difficulty={state.difficulty} disabled={ended} cropDiseaseActive={state.activeEffects.some(effect => effect.kind === 'crop_disease')} /></div>}
             {activeTab === 'crew' && <CrewStatus crew={state.crew} />}
             {activeTab === 'log' && <div className="tab-content-grid"><section className="tile8 px-4 py-3"><label className="t-body text-px-white flex items-center gap-3"><input type="checkbox" checked={pauseOnWarnings} onChange={event => { setPauseOnWarnings(event.target.checked); try { localStorage.setItem('outpost.pauseWarnings', event.target.checked ? '1' : '0'); } catch { /* optional preference */ } }} /> Pausar también ante advertencias</label></section><EventLog events={state.eventLog} location={location} /></div>}
           </div>

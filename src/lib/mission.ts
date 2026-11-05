@@ -5,12 +5,15 @@ import {
   MARS_ENVIRONMENT,
   LIFE_SUPPORT_DATA,
   FOOD_PRODUCTION,
+  HABITAT_RADIATION_FACTOR,
+  DIFFICULTY_SETTINGS,
   RADIATION_SHIELDING,
   POWER_SYSTEM,
 } from '../engine/NASAData';
 
 export const MISSION_LENGTH_EARTH_DAYS = 365;
-export const RADIATION_LIMIT_MSV = RADIATION_SHIELDING.yearly_exposure_limit_mSv;
+export const RADIATION_LIMIT_MSV = RADIATION_SHIELDING.mission_year_budget_mSv;
+export const NASA_CAREER_RADIATION_LIMIT_MSV = RADIATION_SHIELDING.career_exposure_limit_mSv;
 export const BATTERY_CAPACITY_KWH = POWER_SYSTEM.battery_capacity_kwh;
 
 export const environmentFor = (location: LocationType) =>
@@ -30,7 +33,7 @@ export function dayLabel(location: LocationType, day: number) {
   return location === 'mars' ? `Sol ${day}` : `Día lunar ${day}`;
 }
 
-/** Local clock. A Mars sol is 24.6 h; a lunar day is 354 h, so the Moon shows "hour N". */
+/** Local clock. A Mars sol is 24.6 h; a lunar day/night cycle is about 709 h, so the Moon shows "hour N". */
 export function clockLabel(location: LocationType, hour: number) {
   if (location === 'moon') return `Hora ${Math.floor(hour)}`;
   const h = Math.floor(hour);
@@ -73,27 +76,26 @@ export const STATUS_COPY: Record<MissionStatus, { label: string; tone: Tone }> =
 export type Tone = 'neutral' | 'info' | 'success' | 'warning' | 'danger';
 
 /** Projected annual dose (mSv) for a given shield allocation, matching Physics.calculateRadiationExposure. */
-export function projectedAnnualDose(location: LocationType, shieldPct: number) {
+export function projectedAnnualDose(location: LocationType, shieldPct: number, difficulty: keyof typeof DIFFICULTY_SETTINGS = 'normal') {
   const unshielded = environmentFor(location).unshielded_radiation_dose_mSv_per_year;
   const shielding = Math.min(RADIATION_SHIELDING.current_shielding_reduction + (shieldPct / 100) * 0.3, 0.9);
-  return unshielded * (1 - shielding);
+  return unshielded * (1 - shielding) * HABITAT_RADIATION_FACTOR[location] * DIFFICULTY_SETTINGS[difficulty].radiationMultiplier;
 }
 
 /** What each allocation slider buys, in physical units — shown live under the sliders. */
-export function allocationEffects(location: LocationType, crewCount: number, a: ResourceAllocation) {
+export function allocationEffects(location: LocationType, crewCount: number, a: ResourceAllocation, difficulty: keyof typeof DIFFICULTY_SETTINGS = 'normal') {
   const ls = a.lifeSupportPower / 100;
   const o2Demand = crewCount * LIFE_SUPPORT_DATA.o2_consumption_kg_per_person_per_day;
   const foodDemand = crewCount * LIFE_SUPPORT_DATA.food_dry_mass_kg_per_person_per_day;
-  // Physics adds the daily hydroponic yield once per simulated hour, so ×24 per day.
+  // calculateFoodProduction returns an actual daily yield; Physics adds one twenty-fourth per hourly tick.
   const foodPerDay =
     ((FOOD_PRODUCTION.planting_area_m2 * FOOD_PRODUCTION.hydroponic_yield_kg_per_m2_per_year) / 365) *
-    (a.foodProductionPower / 100) *
-    24;
+    (a.foodProductionPower / 100);
   return {
     o2PerDay: LIFE_SUPPORT_DATA.oga_max_o2_kg_per_day * ls,
     o2Demand,
     waterRecovery: LIFE_SUPPORT_DATA.wrs_max_water_recovery * Math.min(1, ls * 2),
-    annualDose: projectedAnnualDose(location, a.radiationShieldPower),
+    annualDose: projectedAnnualDose(location, a.radiationShieldPower, difficulty),
     foodPerDay,
     foodDemand,
   };

@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { MissionSimulator } from '../engine/SimulationState';
 import type { SimulatorSaveData } from '../engine/SimulationState';
 import { writeMissionSave } from '../engine/save';
-import { SimulationState, LocationType, Difficulty, ResourceAllocation, AstronautRole } from '../engine/types';
+import { SimulationState, LocationType, Difficulty, ResourceAllocation, AstronautRole, MaintenanceStation } from '../engine/types';
 
 export function useSimulation(location: LocationType, crewCount: number = 4, difficulty: Difficulty = 'normal', savedGame: SimulatorSaveData | null = null, pauseOnWarnings = false) {
   const [state, setState] = useState<SimulationState | null>(null);
@@ -81,6 +81,14 @@ export function useSimulation(location: LocationType, crewCount: number = 4, dif
     }
   }, []);
 
+  const completeTask = useCallback((station: MaintenanceStation, crewId?: string) => {
+    if (!simulatorRef.current) return 'La tarea no está disponible.';
+    const result = simulatorRef.current.completeMaintenanceTask(station, crewId);
+    setState(simulatorRef.current.getState());
+    writeMissionSave(simulatorRef.current.serialize());
+    return result;
+  }, []);
+
   const restart = useCallback(() => {
     setIsRunning(false);
     const simulator = new MissionSimulator(location, crewCount, difficulty);
@@ -97,6 +105,7 @@ export function useSimulation(location: LocationType, crewCount: number = 4, dif
     setSpeed,
     setAllocation,
     assignCrew,
+    completeTask,
     restart,
     saveNow: () => { if (simulatorRef.current?.isMissionRunning()) writeMissionSave(simulatorRef.current.serialize()); },
   };

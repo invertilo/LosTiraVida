@@ -5,7 +5,7 @@
 // engine never has to renormalize (which would make the dragged thumb jump).
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import { animate, motion, useMotionValue, useTransform, type AnimationPlaybackControls } from 'motion/react';
-import type { LocationType, ResourceAllocation } from '../engine/types';
+import type { Difficulty, LocationType, ResourceAllocation } from '../engine/types';
 import { POWER_SYSTEM } from '../engine/NASAData';
 import { allocationEffects, RADIATION_LIMIT_MSV } from '../lib/mission';
 import { snap, snapFast } from '../lib/motion';
@@ -184,19 +184,20 @@ interface AllocationPanelProps {
   onChange: (a: Partial<ResourceAllocation>) => void;
   location: LocationType;
   crewCount: number;
+  difficulty?: Difficulty;
   disabled?: boolean;
   cropDiseaseActive?: boolean;
   index?: number;
 }
 
-export function AllocationPanel({ allocation, onChange, location, crewCount, disabled, cropDiseaseActive = false, index }: AllocationPanelProps) {
+export function AllocationPanel({ allocation, onChange, location, crewCount, difficulty = 'normal', disabled, cropDiseaseActive = false, index }: AllocationPanelProps) {
   const values: Record<AllocKey, number> = {
     lifeSupportPower: Math.round(allocation.lifeSupportPower),
     radiationShieldPower: Math.round(allocation.radiationShieldPower),
     foodProductionPower: Math.round(allocation.foodProductionPower),
   };
   const total = values.lifeSupportPower + values.radiationShieldPower + values.foodProductionPower;
-  const fx = allocationEffects(location, crewCount, allocation);
+  const fx = allocationEffects(location, crewCount, allocation, difficulty);
 
   const set = (key: AllocKey, v: number) => {
     if (v === values[key]) return;
@@ -224,7 +225,7 @@ export function AllocationPanel({ allocation, onChange, location, crewCount, dis
     ),
     radiationShieldPower: (
       <span style={doseTone ? { color: toneFill[doseTone] } : undefined}>
-        Dosis {fx.annualDose.toFixed(0)} mSv/año · límite NASA {RADIATION_LIMIT_MSV}
+        Dosis {fx.annualDose.toFixed(0)} mSv/año · reto de misión {RADIATION_LIMIT_MSV}
       </span>
     ),
     foodProductionPower: (

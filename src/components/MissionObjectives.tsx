@@ -16,6 +16,14 @@ export function MissionObjectives({ state }: { state: SimulationState }) {
     ...(lateMission && state.resources.water <= 50 ? ['La reserva de agua ya está bajo el mínimo de cierre.'] : []),
     ...(lateMission && state.resources.food <= 50 ? ['La reserva de alimentos ya está bajo el mínimo de cierre.'] : []),
   ];
+  const dailyTasks = new Set((state.completedMaintenanceTasks ?? []).filter(task => task.day === state.dayNumber).map(task => task.station)).size;
+  const tasksByDay = new Map<number, Set<string>>();
+  for (const task of state.completedMaintenanceTasks ?? []) {
+    const dayTasks = tasksByDay.get(task.day) ?? new Set<string>();
+    dayTasks.add(task.station);
+    tasksByDay.set(task.day, dayTasks);
+  }
+  const completedRoutes = [...tasksByDay.values()].filter(dayTasks => dayTasks.size >= 6).length;
   return <Panel title="Objetivos de misión" accent="var(--px-green)">
     {projectionWarnings.length > 0 && <ul className="projection-warnings" aria-label="Proyecciones desfavorables">{projectionWarnings.map(warning => <li key={warning}>⚠ {warning}</li>)}</ul>}
     <ul className="objective-list">
@@ -32,5 +40,12 @@ export function MissionObjectives({ state }: { state: SimulationState }) {
         </li>;
       })}
     </ul>
+    <section className="optional-challenge" aria-label="Reto técnico opcional">
+      <div className="optional-challenge-head"><strong>RETO DEL SOL · RUTA TÉCNICA</strong><b>{dailyTasks}/6</b></div>
+      <p>Atiende las seis estaciones antes del próximo {state.location === 'moon' ? 'día lunar' : 'sol'} para ganar 500 puntos (hasta 3 veces por misión). Es opcional.</p>
+      <div className="objective-track" role="progressbar" aria-label="Avance de la ruta técnica de hoy" aria-valuemin={0} aria-valuemax={6} aria-valuenow={dailyTasks}><i style={{ width: `${dailyTasks / 6 * 100}%` }} /></div>
+      {dailyTasks === 6 && <strong className="optional-challenge-complete">✓ RUTA COMPLETADA · +500 PUNTOS</strong>}
+      <small>{completedRoutes} rutas completadas en la misión · bonificación máxima: 3 rutas</small>
+    </section>
   </Panel>;
 }

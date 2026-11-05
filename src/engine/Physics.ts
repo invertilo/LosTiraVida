@@ -174,7 +174,8 @@ export class Physics {
     // Food production (if power available)
     if (allocation.foodProductionPower > 0) {
       const { foodProduced } = this.calculateFoodProduction(allocation.foodProductionPower, 0);
-      updated.food += foodProduced * m.food;
+      // calculateFoodProduction returns kg/day; the simulation advances one hour per step.
+      updated.food += (foodProduced / 24) * m.food;
     }
 
     // Water leak (event): litres lost per hour

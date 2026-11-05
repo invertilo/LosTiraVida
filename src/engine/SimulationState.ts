@@ -27,6 +27,7 @@ import {
   POWER_SYSTEM,
 } from './NASAData';
 import { evaluateMissionObjectives } from './objectives';
+import { isValidSimulatorSaveData } from './saveValidation';
 
 export interface SimulatorSaveData {
   schemaVersion: 1;
@@ -113,7 +114,7 @@ export class MissionSimulator {
   }
 
   static restore(save: SimulatorSaveData): MissionSimulator {
-    if (save?.schemaVersion !== SAVE_SCHEMA_VERSION || !save.state) throw new Error('Partida guardada incompatible');
+    if (!isValidSimulatorSaveData(save)) throw new Error('Partida guardada incompatible');
     const simulator = new MissionSimulator(save.state.location, save.state.crew.length, save.state.difficulty);
     simulator.state = JSON.parse(JSON.stringify(save.state)) as SimulationState;
     simulator.state.completedMaintenanceTasks ??= [];
@@ -283,6 +284,11 @@ export class MissionSimulator {
       water: 'Recuperar el circuito de agua',
     };
     const assignedCrew = this.state.crew.find(member => member.id === crewId);
+    if (crewId !== undefined && (!assignedCrew || assignedCrew.healthStatus === 'critical')) {
+      return assignedCrew?.healthStatus === 'critical'
+        ? 'El tripulante está en estado crítico y no puede realizar reparaciones.'
+        : 'El tripulante asignado no es válido.';
+    }
     const expertRoles: Record<MaintenanceStation, AstronautRole[]> = {
       power: ['engineer'], lifeSupport: ['engineer'], hydroponics: ['scientist', 'botanist'],
       communications: ['commander'], radiationShield: ['engineer', 'geologist'], water: ['engineer', 'doctor'],
@@ -359,11 +365,12 @@ export class MissionSimulator {
       this.dayNightCycle,
       mods
     );
+    const powerLoadFactor = this.physics.getLastPowerLoadFactor();
 
     // Update radiation exposure
     const radiationThisHour = this.physics.calculateRadiationExposure(
       this.state.hourOfDay,
-      this.state.allocation.radiationShieldPower,
+      powerLoadFactor < 1 ? this.state.allocation.radiationShieldPower * powerLoadFactor : this.state.allocation.radiationShieldPower,
       mods
     );
     this.state.radiationExposure += radiationThisHour * diff.radiationMultiplier * HABITAT_RADIATION_FACTOR[this.state.location];
@@ -391,7 +398,7 @@ export class MissionSimulator {
     }
 
     // Check mission status
-    const failureCheck = this.physics.checkMissionFailure(this.state);
+    const failureCheck = this.physics.checkMissionFailure(this.state, powerLoadFactor);
     if (failureCheck.failed) {
       this.finish(false, failureCheck.title ?? 'Misión fallida', failureCheck.reason);
       return;

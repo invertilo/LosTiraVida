@@ -51,6 +51,20 @@ describe('Hands-on ship maintenance', () => {
     expect(internals(simulator).state.activeEffects[0]?.remainingHours).toBe(10);
   });
 
+  it('rejects critical or unknown crew before applying a repair or reward', () => {
+    const simulator = new MissionSimulator('mars');
+    const state = internals(simulator).state;
+    state.crew[1].healthStatus = 'critical';
+    state.crew[1].stress = 100;
+    state.activeEffects.push({ kind: 'equipment_failure', durationHours: 20, magnitude: 0.3, system: 'power', id: 99, title: 'Fallo del bus eléctrico', remainingHours: 20 });
+
+    expect(simulator.completeMaintenanceTask('power', 'crew_1')).toMatch(/estado crítico/);
+    expect(simulator.completeMaintenanceTask('power', 'missing')).toMatch(/no es válido/);
+    expect(state.activeEffects[0].remainingHours).toBe(20);
+    expect(state.completedMaintenanceTasks).toEqual([]);
+    expect(state.eventLog).toEqual([]);
+  });
+
   it('reduces accumulated radiation without making the dose negative', () => {
     const simulator = new MissionSimulator('moon');
     internals(simulator).state.radiationExposure = 0.5;
@@ -153,6 +167,22 @@ describe('Physics', () => {
     moon.updateResources(input, mkCrew(), a, true, 10, 354);
     expect(input.oxygen).toBe(100);
   });
+
+  it('sheds load when generation plus battery cannot cover the requested systems', () => {
+    const allocation = { lifeSupportPower: 40, radiationShieldPower: 100, foodProductionPower: 100, maintenancePersonnel: [] };
+    const empty = { oxygen: 100, water: 100, food: 100, power: 0, co2_stored: 0 };
+    const charged = { ...empty, power: POWER_SYSTEM.battery_capacity_kwh };
+    const factor = moon.calculatePowerLoadFactor(empty, 4, allocation, false, 400, LUNAR_ENVIRONMENT.day_night_cycle_hours);
+    const starved = moon.updateResources(empty, mkCrew(4), allocation, false, 400, LUNAR_ENVIRONMENT.day_night_cycle_hours);
+    const supplied = moon.updateResources(charged, mkCrew(4), allocation, false, 400, LUNAR_ENVIRONMENT.day_night_cycle_hours);
+
+    expect(factor).toBeCloseTo(6 / 7, 8);
+    expect(starved.oxygen).toBeLessThan(supplied.oxygen);
+    expect(starved.water).toBeLessThan(supplied.water);
+    expect(starved.food).toBeLessThan(supplied.food);
+    expect(moon.calculateRadiationExposure(0, allocation.radiationShieldPower * factor))
+      .toBeGreaterThan(moon.calculateRadiationExposure(0, allocation.radiationShieldPower));
+  });
 });
 
 describe('Failure and success conditions', () => {
@@ -172,10 +202,11 @@ describe('Failure and success conditions', () => {
   });
   it('water = 0 fails the mission', () => expect(moon.checkMissionFailure(base({ water: 0 })).reason).toMatch(/Agua/));
   it('food below 0.2 kg/person fails the mission', () => expect(moon.checkMissionFailure(base({ food: 0.5 })).reason).toMatch(/Alimentos/));
-  it('empty battery at night fails; empty battery by day does not', () => {
+  it('an empty battery alone does not fail while generation still serves part of the load', () => {
     const night = { ...base({ power: 0 }), isDay: false };
-    expect(moon.checkMissionFailure(night).reason).toMatch(/Batería/);
+    expect(moon.checkMissionFailure(night, 0.6).failed).toBe(false);
     expect(moon.checkMissionFailure(base({ power: 0 })).failed).toBe(false);
+    expect(moon.checkMissionFailure(night, 0).reason).toMatch(/generación/);
   });
   it('radiation above limit fails; all-critical crew fails', () => {
     expect(moon.checkMissionFailure({ ...base(), radiationExposure: 51 }).reason).toMatch(/radiación/);
@@ -278,14 +309,17 @@ describe('Edge cases', () => {
       expect(s.getEvents().some(e => e.description.includes('Batería'))).toBe(false);
     }
   });
-  it('power depletion at night fails the mission (load 10 kW > 6 kW baseload, solar = 0)', () => {
+  it('power depletion at night sheds nonessential load instead of failing while the reactor generates', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.99);
-    for (const [loc, hours] of [['moon', 400], ['mars', 60]] as const) {
+    for (const [loc, nightHour] of [['moon', 400], ['mars', 20]] as const) {
       const s = new MissionSimulator(loc);
-      Object.assign(internals(s).state.allocation, { lifeSupportPower: 100, radiationShieldPower: 100, foodProductionPower: 100 });
-      run(s, hours);
-      expect(s.getMissionResult()).toBe(false);
-      expect(s.getEvents().find(e => e.type === 'failure')?.description).toMatch(/Batería/);
+      const state = internals(s).state;
+      state.hourOfDay = nightHour;
+      state.resources.power = 0;
+      Object.assign(state.allocation, { lifeSupportPower: 100, radiationShieldPower: 100, foodProductionPower: 100 });
+      s.step();
+      expect(s.getMissionResult()).toBeNull();
+      expect(s.getState().resources.power).toBe(0);
     }
   });
   it('minimal allocation (everything 0%) keeps power positive but crew still breaks down (stress) before a year', () => {
@@ -764,5 +798,16 @@ describe('Mission objectives and save continuity', () => {
   it('rejects save data with an unsupported schema version', () => {
     const sim = new MissionSimulator('mars');
     expect(() => MissionSimulator.restore({ ...sim.serialize(), schemaVersion: 99 } as never)).toThrow(/incompatible/);
+  });
+
+  it.each([
+    ['null resources', (save: ReturnType<MissionSimulator['serialize']>) => { (save.state as unknown as { resources: null }).resources = null; }],
+    ['empty crew', (save: ReturnType<MissionSimulator['serialize']>) => { save.state.crew = []; }],
+    ['NaN resource', (save: ReturnType<MissionSimulator['serialize']>) => { save.state.resources.oxygen = Number.NaN; }],
+    ['invalid allocation', (save: ReturnType<MissionSimulator['serialize']>) => { save.state.allocation.lifeSupportPower = 101; }],
+  ])('rejects corrupt save contents: %s', (_label, corrupt) => {
+    const save = new MissionSimulator('mars').serialize();
+    corrupt(save);
+    expect(() => MissionSimulator.restore(save)).toThrow(/incompatible/);
   });
 });

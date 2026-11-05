@@ -34,13 +34,14 @@ const ROLE_NAMES: Record<Astronaut['role'], string> = {
   commander: 'Comandante', engineer: 'Ingeniería', scientist: 'Ciencia', doctor: 'Medicina', botanist: 'Botánica', geologist: 'Geología',
 };
 
-export function OperationsDeck({ state, onCompleteTask, disabled = false, active = true, focusStation = null, onFocusHandled }: {
+export function OperationsDeck({ state, onCompleteTask, disabled = false, active = true, focusStation = null, onFocusHandled, onTaskOpenChange }: {
   state: SimulationState;
   onCompleteTask: (station: MaintenanceStation, crewId?: string) => string;
   disabled?: boolean;
   active?: boolean;
   focusStation?: MaintenanceStation | null;
   onFocusHandled?: () => void;
+  onTaskOpenChange?: (open: boolean) => void;
 }) {
   const [playerX, setPlayerX] = useState(8);
   const [taskStation, setTaskStation] = useState<MaintenanceStation | null>(null);
@@ -78,10 +79,13 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
   const nearby = stations.find((station) => Math.abs(station.x - visiblePlayerX) < 5.5 && !completed.includes(station.id));
   const activeTaskStation = active && focusStation ? focusStation : taskStation;
   const selected = stations.find((station) => station.id === activeTaskStation);
+  const eligibleCrew = state.crew.filter(member => member.healthStatus !== 'critical');
   const defaultCrewId = activeTaskStation
-    ? state.crew.find(member => TASK_EXPERTISE[activeTaskStation].includes(member.role))?.id ?? state.crew[0]?.id ?? ''
-    : state.crew[0]?.id ?? '';
-  const assignedCrewId = crewChoice?.station === activeTaskStation ? crewChoice.crewId : defaultCrewId;
+    ? eligibleCrew.find(member => TASK_EXPERTISE[activeTaskStation].includes(member.role))?.id ?? eligibleCrew[0]?.id ?? ''
+    : eligibleCrew[0]?.id ?? '';
+  const assignedCrewId = crewChoice?.station === activeTaskStation && eligibleCrew.some(member => member.id === crewChoice.crewId)
+    ? crewChoice.crewId
+    : defaultCrewId;
   const taskOpen = active && Boolean(focusStation || taskStation);
   const nearbyStation = nearby?.id;
   const deckCrew = state.crew.find((member) => member.healthStatus === 'critical' || member.healthStatus === 'injured' || member.healthStatus === 'fatigued' || member.stress >= 70) ?? state.crew[0];
@@ -98,6 +102,11 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
   }, []);
 
   useEffect(() => () => window.clearTimeout(walkTimer.current), []);
+
+  useEffect(() => {
+    onTaskOpenChange?.(taskOpen);
+    return () => { if (taskOpen) onTaskOpenChange?.(false); };
+  }, [onTaskOpenChange, taskOpen]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -265,9 +274,9 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
             <p id="task-help" className="t-small text-px-dim mt-2">{selected.active ? 'La tarea adelanta hasta 6 horas la reparación; un especialista puede adelantar hasta 10.' : activeTaskStation === 'power' ? 'Diagnóstico preventivo: recupera hasta 6 kWh de batería.' : activeTaskStation === 'lifeSupport' ? 'Calibración preventiva: recupera 2 kg de oxígeno.' : activeTaskStation === 'hydroponics' ? 'Cosecha preventiva: suma 3 kg de alimentos.' : activeTaskStation === 'radiationShield' ? 'Calibración preventiva: reduce 1 mSv de la dosis acumulada.' : activeTaskStation === 'water' ? 'Mantenimiento preventivo: recupera 20 litros de agua.' : 'Ajuste preventivo: mejora 2 puntos la moral de toda la tripulación.'}</p>
             <label className="task-crew-select">ASIGNAR TRIPULANTE
               <select value={assignedCrewId} onChange={event => setCrewChoice({ station: activeTaskStation, crewId: event.target.value })}>
-                {state.crew.map(member => <option key={member.id} value={member.id}>{member.name} · {ROLE_NAMES[member.role]}{TASK_EXPERTISE[activeTaskStation].includes(member.role) ? ' · ESPECIALISTA' : ''}</option>)}
+                {eligibleCrew.map(member => <option key={member.id} value={member.id}>{member.name} · {ROLE_NAMES[member.role]}{TASK_EXPERTISE[activeTaskStation].includes(member.role) ? ' · ESPECIALISTA' : ''}</option>)}
               </select>
-              <small>La especialidad acelera 4 h extra las averías; trabajar suma estrés.</small>
+              <small>{eligibleCrew.length ? 'La especialidad acelera 4 h extra las averías; trabajar suma estrés.' : 'No hay tripulantes en condiciones de realizar la tarea.'}</small>
             </label>
             {activeTaskStation === 'power' && <div className="task-game"><p className="task-instruction">Conecta los cables en el orden indicado</p><div className="wire-targets">{WIRE_SEQUENCE.map((color, index) => <span key={color} className={wireProgress > index ? `wire-dot ${color} connected` : `wire-dot ${color}`}>{wireProgress > index ? '✓' : index + 1}</span>)}</div><div className="wire-buttons">{COLORS.map((color) => <button key={color} type="button" className={`wire-button ${color}`} onClick={() => { if (color === WIRE_SEQUENCE[wireProgress]) { const next = wireProgress + 1; setWireProgress(next); if (next === WIRE_SEQUENCE.length) finish('power'); } else { setWireProgress(0); fail('SECUENCIA INCORRECTA · PRUEBA DE NUEVO'); } }}>{color === 'cyan' ? 'AZUL' : color === 'yellow' ? 'AMARILLO' : 'ROJO'}</button>)}</div></div>}
             {activeTaskStation === 'lifeSupport' && <div className="task-game"><p className="task-instruction">Ajusta la presión a 21 kPa</p><div className="pressure-meter"><strong>{pressure}</strong><span> kPa</span><i style={{ width: `${Math.max(8, Math.min(100, pressure * 4))}%` }} /></div><div className="task-actions"><button type="button" className="btn8 btn8-secondary" onClick={() => setPressure((value) => Math.max(0, value - 1))}>− BAJAR</button><button type="button" className="btn8 btn8-primary" onClick={() => { const next = Math.min(30, pressure + 1); setPressure(next); if (next === 21) finish('lifeSupport'); }}>+ SUBIR</button></div></div>}

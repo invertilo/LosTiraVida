@@ -26,6 +26,7 @@ export const NO_EFFECTS: EffectModifiers = {
 
 export class Physics {
   private constants: PhysicsConstants;
+  private lastPowerLoadFactor = 1;
 
   constructor(constants: PhysicsConstants) {
     this.constants = constants;
@@ -95,6 +96,28 @@ export class Physics {
     return consumption;
   }
 
+  /** Fraction of the requested electrical load that can be served during this hour. */
+  calculatePowerLoadFactor(
+    resources: ResourceState,
+    crewCount: number,
+    allocation: ResourceAllocation,
+    isDay: boolean,
+    hourOfDay: number,
+    dayNightCycle: number,
+    mods: Partial<EffectModifiers> = NO_EFFECTS
+  ): number {
+    const m = { ...NO_EFFECTS, ...mods };
+    const generation = this.calculateSolarPowerGeneration(hourOfDay, dayNightCycle) * m.solar * m.power +
+      POWER_SYSTEM.fission_baseload_kw;
+    const demand = this.calculatePowerConsumption(crewCount, allocation, isDay);
+    const available = generation + resources.power;
+    return demand <= 0 || available >= demand ? 1 : available <= 0 ? 0 : available / demand;
+  }
+
+  getLastPowerLoadFactor(): number {
+    return this.lastPowerLoadFactor;
+  }
+
   // Calculate food production from hydroponic systems
   calculateFoodProduction(
     allocatedPower: number, // 0-100%
@@ -141,6 +164,12 @@ export class Physics {
   ): ResourceState {
     const m = { ...NO_EFFECTS, ...mods };
     const updated = { ...resources };
+    const solarGeneration = this.calculateSolarPowerGeneration(hourOfDay, dayNightCycle) * m.solar * m.power +
+      POWER_SYSTEM.fission_baseload_kw;
+    const powerConsumption = this.calculatePowerConsumption(crew.length, allocation, isDay);
+    const availablePower = solarGeneration + resources.power;
+    const loadFactor = powerConsumption <= 0 || availablePower >= powerConsumption ? 1 : availablePower <= 0 ? 0 : availablePower / powerConsumption;
+    this.lastPowerLoadFactor = loadFactor;
 
     // O2 consumption
     const o2Consumed = this.calculateO2Consumption(crew);
@@ -151,7 +180,8 @@ export class Physics {
     updated.water = Math.max(0, updated.water - waterConsumed);
 
     // Regenerative life support: O2 electrolysis + water recycling scale with Life Support power
-    const lifeSupportFraction = (allocation.lifeSupportPower / 100) * m.lifeSupport;
+    let lifeSupportFraction = (allocation.lifeSupportPower / 100) * m.lifeSupport;
+    if (loadFactor < 1) lifeSupportFraction *= loadFactor;
     updated.oxygen += (LIFE_SUPPORT_DATA.oga_max_o2_kg_per_day * lifeSupportFraction) / 24;
     updated.water += waterConsumed * LIFE_SUPPORT_DATA.wrs_max_water_recovery * Math.min(1, lifeSupportFraction * 2.5);
 
@@ -163,11 +193,6 @@ export class Physics {
     updated.co2_stored = Math.min(updated.co2_stored + co2Produced, 50); // max storage
 
     // Power generation and consumption
-    const solarGeneration =
-      this.calculateSolarPowerGeneration(hourOfDay, dayNightCycle) * m.solar * m.power +
-      POWER_SYSTEM.fission_baseload_kw; // reactor is hardened: only the solar array can be degraded
-    const powerConsumption = this.calculatePowerConsumption(crew.length, allocation, isDay);
-
     const netPower = solarGeneration - powerConsumption;
     updated.power = Math.max(0, Math.min(POWER_SYSTEM.battery_capacity_kwh, updated.power + netPower));
 
@@ -175,7 +200,7 @@ export class Physics {
     if (allocation.foodProductionPower > 0) {
       const { foodProduced } = this.calculateFoodProduction(allocation.foodProductionPower, 0);
       // calculateFoodProduction returns kg/day; the simulation advances one hour per step.
-      updated.food += (foodProduced / 24) * m.food;
+      updated.food += (foodProduced / 24) * m.food * (loadFactor < 1 ? loadFactor : 1);
     }
 
     // Water leak (event): litres lost per hour
@@ -185,7 +210,7 @@ export class Physics {
   }
 
   // Calculate mission failure conditions
-  checkMissionFailure(state: SimulationState): { failed: boolean; reason: string; title?: string } {
+  checkMissionFailure(state: SimulationState, powerLoadFactor = 1): { failed: boolean; reason: string; title?: string } {
     const { resources, crew, radiationExposure } = state;
 
     if (resources.oxygen < 0.1) {
@@ -200,8 +225,8 @@ export class Physics {
       return { failed: true, reason: 'Alimentos agotados: la tripulación no puede sobrevivir', title: 'Alimentos agotados' };
     }
 
-    if (resources.power < 0.1 && state.isDay === false) {
-      return { failed: true, reason: 'Batería agotada durante la noche: sistemas apagados', title: 'Fallo de energía' };
+    if (powerLoadFactor <= 0) {
+      return { failed: true, reason: 'No hay generación ni batería disponible: sistemas apagados', title: 'Fallo de energía' };
     }
 
     if (radiationExposure > this.constants.radiation_limit_mSv_per_year) {

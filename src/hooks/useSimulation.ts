@@ -4,11 +4,15 @@ import type { SimulatorSaveData } from '../engine/SimulationState';
 import { writeMissionSave } from '../engine/save';
 import { SimulationState, LocationType, Difficulty, ResourceAllocation, AstronautRole, MaintenanceStation } from '../engine/types';
 
-export function useSimulation(location: LocationType, crewCount: number = 4, difficulty: Difficulty = 'normal', savedGame: SimulatorSaveData | null = null, pauseOnWarnings = false) {
+export function useSimulation(location: LocationType, crewCount: number = 4, difficulty: Difficulty = 'normal', savedGame: SimulatorSaveData | null = null, pauseOnWarnings = false, interactionPaused = false) {
   const [state, setState] = useState<SimulationState | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [speed, setSpeed] = useState(1);
   const simulatorRef = useRef<MissionSimulator | null>(null);
+
+  const saveNow = useCallback(() => {
+    if (simulatorRef.current?.isMissionRunning()) writeMissionSave(simulatorRef.current.serialize());
+  }, []);
 
   // Initialize simulator
   useEffect(() => {
@@ -20,7 +24,7 @@ export function useSimulation(location: LocationType, crewCount: number = 4, dif
 
   // Run simulation loop
   useEffect(() => {
-    if (!isRunning || !simulatorRef.current) return;
+    if (!isRunning || interactionPaused || !simulatorRef.current) return;
 
     const interval = setInterval(() => {
       if (!simulatorRef.current) return;
@@ -47,7 +51,7 @@ export function useSimulation(location: LocationType, crewCount: number = 4, dif
     }, 1000 / speed); // 1X = one simulated hour per real second
 
     return () => clearInterval(interval);
-  }, [isRunning, speed, pauseOnWarnings]);
+  }, [isRunning, speed, pauseOnWarnings, interactionPaused]);
 
   useEffect(() => {
     if (!isRunning || !simulatorRef.current) return;
@@ -56,6 +60,22 @@ export function useSimulation(location: LocationType, crewCount: number = 4, dif
     }, 5000);
     return () => window.clearInterval(id);
   }, [isRunning]);
+
+  // Persist at browser lifecycle boundaries; timers are not guaranteed to run before a tab is discarded.
+  useEffect(() => {
+    const onPageHide = () => saveNow();
+    const onVisibilityChange = () => { if (document.visibilityState === 'hidden') saveNow(); };
+    window.addEventListener('pagehide', onPageHide);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('pagehide', onPageHide);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [saveNow]);
+
+  useEffect(() => {
+    if (interactionPaused) saveNow();
+  }, [interactionPaused, saveNow]);
 
   const toggleRunning = useCallback(() => {
     setIsRunning((running) => {
@@ -107,6 +127,6 @@ export function useSimulation(location: LocationType, crewCount: number = 4, dif
     assignCrew,
     completeTask,
     restart,
-    saveNow: () => { if (simulatorRef.current?.isMissionRunning()) writeMissionSave(simulatorRef.current.serialize()); },
+    saveNow,
   };
 }

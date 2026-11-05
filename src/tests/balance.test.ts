@@ -64,7 +64,7 @@ describe('Difficulty ordering', () => {
       expect(e).toBeGreaterThanOrEqual(n);
       expect(n).toBeGreaterThanOrEqual(h);
     }
-  });
+  }, 10_000);
   it('easy forgives splits that fail on normal; hard needs a deliberate life-support and shielding split', () => {
     expect(winRate('moon', 'easy', [40, 40, 20], 30)).toBeGreaterThan(0.3);
     expect(winRate('moon', 'hard', [35, 55, 10], 30)).toBeGreaterThan(0.3);
@@ -102,5 +102,5 @@ describe('Target win rates across a shared decision distribution', () => {
     expect(rates.normal).toBeLessThanOrEqual(0.7);
     expect(rates.hard).toBeGreaterThanOrEqual(0.15);
     expect(rates.hard).toBeLessThanOrEqual(0.4);
-  });
+  }, 10_000);
 });

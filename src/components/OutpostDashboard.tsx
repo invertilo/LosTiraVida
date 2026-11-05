@@ -29,6 +29,8 @@ import { EventEffectsLayer } from './EventEffectsLayer';
 import { OperationsDeck } from './OperationsDeck';
 import { SystemCauseMap } from './SystemCauseMap';
 import { CloseIcon, CriticalIcon, FailureIcon, QuestionIcon } from './icons';
+import type { CoopSessionController } from '../hooks/useCoopSession';
+import type { CoopAction } from '../lib/coop';
 
 interface OutpostDashboardProps {
   location: LocationType;
@@ -38,6 +40,7 @@ interface OutpostDashboardProps {
   onOpenTutorial: () => void;
   tutorialOpen: boolean;
   savedGame?: SimulatorSaveData | null;
+  coop?: CoopSessionController | null;
 }
 
 type Toast = { id: number; event: SimulationEvent };
@@ -50,10 +53,14 @@ function isTypingTarget(t: EventTarget | null) {
   return !!el.closest('input, textarea, select, [contenteditable="true"]');
 }
 
-export function OutpostDashboard({ location, crewCount, difficulty = 'normal', onExit, onOpenTutorial, tutorialOpen, savedGame = null }: OutpostDashboardProps) {
+export function OutpostDashboard({ location, crewCount, difficulty = 'normal', onExit, onOpenTutorial, tutorialOpen, savedGame = null, coop = null }: OutpostDashboardProps) {
   const [pauseOnWarnings, setPauseOnWarnings] = useState(() => { try { return localStorage.getItem('outpost.pauseWarnings') === '1'; } catch { return false; } });
   const [operationsTaskOpen, setOperationsTaskOpen] = useState(false);
-  const { state, isRunning, toggleRunning, speed, setSpeed, setAllocation, assignCrew, completeTask, restart, saveNow } = useSimulation(location, crewCount, difficulty, savedGame, pauseOnWarnings, operationsTaskOpen);
+  const isGuest = Boolean(coop && !coop.isHost);
+  const coopTaskOpen = Boolean(coop?.busyPlayerIds.length);
+  const { state, isRunning, toggleRunning, speed, setSpeed, setAllocation, assignCrew, completeTask, restart, saveNow, serializeNow } = useSimulation(
+    location, crewCount, difficulty, savedGame, pauseOnWarnings, operationsTaskOpen || coopTaskOpen, isGuest ? coop?.snapshot ?? null : null, isGuest,
+  );
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [resultOpen, setResultOpen] = useState(false);
   const [restartRequest, setRestartRequest] = useState(0);
@@ -63,6 +70,15 @@ export function OutpostDashboard({ location, crewCount, difficulty = 'normal', o
   const [focusStation, setFocusStation] = useState<MaintenanceStation | null>(null);
   const [reviewedEvents, setReviewedEvents] = useState(savedGame?.state.eventLog.length ?? 0);
   const seenEvents = useRef(savedGame?.state.eventLog.length ?? 0);
+  const snapshotSequence = useRef(0);
+  const snapshotTimer = useRef<number | undefined>(undefined);
+  const requestCoopState = coop?.requestState;
+  const coopCode = coop?.session?.code;
+  const coopIsHost = coop?.isHost ?? false;
+  const coopStateRequest = coop?.stateRequest ?? 0;
+  const coopSnapshotSequence = coop?.snapshot?.sequence ?? 0;
+  const sendCoopSnapshot = coop?.sendSnapshot;
+  const sendCoopStart = coop?.sendStart;
 
   const ended = state?.missionSuccess !== null && state?.missionSuccess !== undefined;
   const hasProgress = !!state && (state.dayNumber > 1 || state.hourOfDay > 0);
@@ -120,9 +136,10 @@ export function OutpostDashboard({ location, crewCount, difficulty = 'normal', o
   }, [ended]);
 
   const handleRestart = useCallback(() => {
-    restart();
+    if (isGuest) void coop?.sendAction({ kind: 'restart' });
+    else restart();
     setResultOpen(false);
-  }, [restart]);
+  }, [coop, isGuest, restart]);
 
   const openOperationsForStation = useCallback((station: MaintenanceStation) => {
     setFocusStation(station);
@@ -130,9 +147,69 @@ export function OutpostDashboard({ location, crewCount, difficulty = 'normal', o
   }, []);
   const clearFocusStation = useCallback(() => setFocusStation(null), []);
   const handleExit = useCallback(() => {
-    saveNow();
+    if (!isGuest) saveNow();
     onExit();
-  }, [onExit, saveNow]);
+  }, [isGuest, onExit, saveNow]);
+
+  const requestAction = useCallback((action: CoopAction) => {
+    if (coop && !coop.isHost) void coop.sendAction(action);
+  }, [coop]);
+  const handleToggleRunning = useCallback(() => isGuest ? requestAction({ kind: 'toggle-running' }) : toggleRunning(), [isGuest, requestAction, toggleRunning]);
+  const handleSpeed = useCallback((nextSpeed: number) => isGuest ? requestAction({ kind: 'set-speed', speed: nextSpeed }) : setSpeed(nextSpeed), [isGuest, requestAction, setSpeed]);
+  const handleAllocation = useCallback((allocation: Parameters<typeof setAllocation>[0]) => isGuest ? requestAction({ kind: 'set-allocation', allocation }) : setAllocation(allocation), [isGuest, requestAction, setAllocation]);
+  const handleAssignCrew = useCallback((role: Parameters<typeof assignCrew>[0], assignment: Parameters<typeof assignCrew>[1]) => isGuest ? requestAction({ kind: 'assign-crew', role, assignment }) : assignCrew(role, assignment), [assignCrew, isGuest, requestAction]);
+  const handleCompleteTask = useCallback((station: MaintenanceStation, crewId?: string) => {
+    if (!isGuest) return completeTask(station, crewId);
+    requestAction({ kind: 'complete-task', station, crewId });
+    return 'Solicitud enviada al control de misión.';
+  }, [completeTask, isGuest, requestAction]);
+
+  useEffect(() => {
+    if (!coop) return;
+    coop.setActionHandler((action) => {
+      if (!coop.isHost) return;
+      switch (action.kind) {
+        case 'toggle-running': toggleRunning(); break;
+        case 'set-speed': setSpeed(action.speed); break;
+        case 'set-allocation': setAllocation(action.allocation); break;
+        case 'assign-crew': assignCrew(action.role, action.assignment); break;
+        case 'complete-task': completeTask(action.station, action.crewId); break;
+        case 'restart': restart(); break;
+      }
+    });
+    return () => coop.setActionHandler(() => undefined);
+  }, [assignCrew, completeTask, coop, restart, setAllocation, setSpeed, toggleRunning]);
+
+  const broadcastSnapshot = useCallback(() => {
+    if (!coopIsHost) return;
+    const save = serializeNow();
+    if (!save) return;
+    snapshotSequence.current = Math.max(snapshotSequence.current + 1, Date.now(), coopSnapshotSequence + 1);
+    void sendCoopSnapshot?.({ save, running: isRunning, speed, sequence: snapshotSequence.current });
+  }, [coopIsHost, coopSnapshotSequence, isRunning, sendCoopSnapshot, serializeNow, speed]);
+
+  useEffect(() => {
+    if (!coopIsHost || !state) return;
+    window.clearTimeout(snapshotTimer.current);
+    snapshotTimer.current = window.setTimeout(broadcastSnapshot, 125);
+    return () => window.clearTimeout(snapshotTimer.current);
+  }, [broadcastSnapshot, coopIsHost, state]);
+
+  useEffect(() => {
+    if (coopIsHost && coopStateRequest > 0) {
+      void sendCoopStart?.({ location, crewCount, difficulty });
+      broadcastSnapshot();
+    }
+  }, [broadcastSnapshot, coopIsHost, coopStateRequest, crewCount, difficulty, location, sendCoopStart]);
+
+  useEffect(() => {
+    if (isGuest) void requestCoopState?.();
+  }, [coopCode, isGuest, requestCoopState]);
+
+  const handleTaskOpenChange = useCallback((open: boolean) => {
+    setOperationsTaskOpen(open);
+    if (coop) void coop.sendTaskState(open);
+  }, [coop]);
 
   // Keyboard shortcuts.
   useEffect(() => {
@@ -144,9 +221,9 @@ export function OutpostDashboard({ location, crewCount, difficulty = 'normal', o
         // Let focused buttons/sliders handle Space natively.
         if (target?.closest('button, [role="slider"], [role="radio"], a')) return;
         e.preventDefault();
-        if (!ended) toggleRunning();
+        if (!ended) handleToggleRunning();
       } else if (/^[1-5]$/.test(e.key)) {
-        setSpeed(SPEEDS[Number(e.key) - 1]);
+        handleSpeed(SPEEDS[Number(e.key) - 1]);
       } else if (e.key === 'r' || e.key === 'R') {
         setRestartRequest((n) => n + 1);
       } else if (e.key === '?') {
@@ -155,7 +232,7 @@ export function OutpostDashboard({ location, crewCount, difficulty = 'normal', o
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [ended, toggleRunning, setSpeed, onOpenTutorial]);
+  }, [ended, handleToggleRunning, handleSpeed, onOpenTutorial]);
 
   if (!state) return null;
 
@@ -179,13 +256,14 @@ export function OutpostDashboard({ location, crewCount, difficulty = 'normal', o
               <p className="t-small text-px-dim truncate">
                 {state && `Día ${state.dayNumber} · ${Math.floor(state.hourOfDay).toString().padStart(2, '0')}:00 · `}
                 {crewCount} tripulantes ·{' '}
-                {isRunning ? (
+                  {isRunning ? (
                   <span className="text-px-green">En marcha {speed}X</span>
                 ) : ended ? (
                   'Misión terminada'
                 ) : (
                   <span className="text-px-yellow">En pausa</span>
                 )}
+                  {coop?.session && <> · <span className="text-px-cyan">ONLINE {coop.players.length}/4</span></>}
               </p>
             </div>
           </div>
@@ -193,9 +271,9 @@ export function OutpostDashboard({ location, crewCount, difficulty = 'normal', o
           <div className="mission-controls order-3 w-full sm:order-none sm:w-auto flex justify-center">
             <Controls
               isRunning={isRunning}
-              onToggle={toggleRunning}
+              onToggle={handleToggleRunning}
               speed={speed}
-              onSpeed={setSpeed}
+              onSpeed={handleSpeed}
               onRestart={handleRestart}
               ended={ended}
               hasProgress={hasProgress}
@@ -235,7 +313,7 @@ export function OutpostDashboard({ location, crewCount, difficulty = 'normal', o
       </div>
 
       <div className="mx-auto max-w-[1440px] p-2 sm:p-4">
-        <ActiveEffects state={state} onAssignCrew={assignCrew} onOpenManagement={() => setActiveTab('management')} onOpenOperations={openOperationsForStation} disabled={ended} />
+        <ActiveEffects state={state} onAssignCrew={handleAssignCrew} onOpenManagement={() => setActiveTab('management')} onOpenOperations={openOperationsForStation} disabled={ended} />
         <DashboardTabs active={activeTab} onChange={tab => { setActiveTab(tab); if (tab === 'log') setReviewedEvents(state.eventLog.length); }} unread={Math.max(0, state.eventLog.length - reviewedEvents)} alerted={[
           ...(state.systems.power !== 'operational' || state.systems.communications !== 'operational' ? ['exterior' as const] : []),
           ...(state.systems.lifeSupport !== 'operational' || state.systems.foodProduction !== 'operational' ? ['habitat' as const] : []),
@@ -247,8 +325,8 @@ export function OutpostDashboard({ location, crewCount, difficulty = 'normal', o
           <div id="dashboard-panel" role="tabpanel" aria-labelledby={`tab-${activeTab}`} tabIndex={0}>
             {activeTab === 'exterior' && <ExteriorScene state={state} />}
             {activeTab === 'habitat' && <HabitatScene state={state} isRunning={isRunning} />}
-            <div hidden={activeTab !== 'operations'}><OperationsDeck state={state} onCompleteTask={completeTask} disabled={ended} active={activeTab === 'operations'} focusStation={focusStation} onFocusHandled={clearFocusStation} onTaskOpenChange={setOperationsTaskOpen} /></div>
-            {activeTab === 'management' && <div className="tab-content-grid"><MissionStats state={state} /><MissionObjectives state={state} /><SystemCauseMap state={state} /><ResourceGauges state={state} /><AllocationPanel allocation={state.allocation} onChange={setAllocation} location={location} crewCount={state.crew.length} difficulty={state.difficulty} disabled={ended} cropDiseaseActive={state.activeEffects.some(effect => effect.kind === 'crop_disease')} /></div>}
+            <div hidden={activeTab !== 'operations'}><OperationsDeck state={state} onCompleteTask={handleCompleteTask} disabled={ended} active={activeTab === 'operations'} focusStation={focusStation} onFocusHandled={clearFocusStation} onTaskOpenChange={handleTaskOpenChange} coop={coop} /></div>
+            {activeTab === 'management' && <div className="tab-content-grid"><MissionStats state={state} /><MissionObjectives state={state} /><SystemCauseMap state={state} /><ResourceGauges state={state} /><AllocationPanel allocation={state.allocation} onChange={handleAllocation} location={location} crewCount={state.crew.length} difficulty={state.difficulty} disabled={ended} cropDiseaseActive={state.activeEffects.some(effect => effect.kind === 'crop_disease')} /></div>}
             {activeTab === 'crew' && <CrewStatus crew={state.crew} />}
             {activeTab === 'log' && <div className="tab-content-grid"><section className="tile8 px-4 py-3"><label className="t-body text-px-white flex items-center gap-3"><input type="checkbox" checked={pauseOnWarnings} onChange={event => { setPauseOnWarnings(event.target.checked); try { localStorage.setItem('outpost.pauseWarnings', event.target.checked ? '1' : '0'); } catch { /* optional preference */ } }} /> Pausar también ante advertencias</label></section><EventLog events={state.eventLog} location={location} /></div>}
           </div>

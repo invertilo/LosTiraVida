@@ -782,6 +782,7 @@ describe('Mission objectives and save continuity', () => {
     expect(sim.getState()).toEqual(terminal);
     expect(terminal.outcome?.objectives).toHaveLength(6);
     expect(terminal.eventLog.filter(event => event.title.includes('Misión completa')).length).toBe(1);
+    expect(MissionSimulator.restore(sim.serialize()).getState()).toEqual(terminal);
   });
 
   it('serializes event identifiers, cooldowns, and the complete simulation state', () => {

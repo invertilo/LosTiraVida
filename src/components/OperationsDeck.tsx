@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SimulationState } from '../engine/types';
 import type { Astronaut, MaintenanceStation } from '../engine/types';
 import { Button } from './primitives';
+import type { CoopSessionController } from '../hooks/useCoopSession';
 
 type StationInfo = {
   id: MaintenanceStation;
@@ -34,7 +35,7 @@ const ROLE_NAMES: Record<Astronaut['role'], string> = {
   commander: 'Comandante', engineer: 'Ingeniería', scientist: 'Ciencia', doctor: 'Medicina', botanist: 'Botánica', geologist: 'Geología',
 };
 
-export function OperationsDeck({ state, onCompleteTask, disabled = false, active = true, focusStation = null, onFocusHandled, onTaskOpenChange }: {
+export function OperationsDeck({ state, onCompleteTask, disabled = false, active = true, focusStation = null, onFocusHandled, onTaskOpenChange, coop = null }: {
   state: SimulationState;
   onCompleteTask: (station: MaintenanceStation, crewId?: string) => string;
   disabled?: boolean;
@@ -42,6 +43,7 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
   focusStation?: MaintenanceStation | null;
   onFocusHandled?: () => void;
   onTaskOpenChange?: (open: boolean) => void;
+  coop?: CoopSessionController | null;
 }) {
   const [playerX, setPlayerX] = useState(8);
   const [taskStation, setTaskStation] = useState<MaintenanceStation | null>(null);
@@ -54,7 +56,10 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
   const [shieldSetting, setShieldSetting] = useState(50);
   const [toast, setToast] = useState('');
   const [crewChoice, setCrewChoice] = useState<{ station: MaintenanceStation; crewId: string } | null>(null);
-  const walkTimer = useRef<number | undefined>(undefined);
+  const movementFrame = useRef<number | undefined>(undefined);
+  const lastMovementFrame = useRef(0);
+  const pressedKeys = useRef(new Set<string>());
+  const pointerDirection = useRef<1 | -1 | 0>(0);
   const viewportRef = useRef<HTMLDivElement>(null);
   const taskCloseRef = useRef<HTMLButtonElement>(null);
   const taskScoreRef = useRef<HTMLDivElement>(null);
@@ -76,6 +81,7 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
   }));
 
   const visiblePlayerX = active && focusStation ? (BASE_STATIONS.find(station => station.id === focusStation)?.x ?? playerX) - 1 : playerX;
+  const visiblePlayerXRef = useRef(visiblePlayerX);
   const nearby = stations.find((station) => Math.abs(station.x - visiblePlayerX) < 5.5 && !completed.includes(station.id));
   const activeTaskStation = active && focusStation ? focusStation : taskStation;
   const selected = stations.find((station) => station.id === activeTaskStation);
@@ -87,21 +93,60 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
     ? crewChoice.crewId
     : defaultCrewId;
   const taskOpen = active && Boolean(focusStation || taskStation);
+  const sendCoopMovement = coop?.sendMovement;
+  const coopPlayerId = coop?.session?.playerId;
   const nearbyStation = nearby?.id;
   const deckCrew = state.crew.find((member) => member.healthStatus === 'critical' || member.healthStatus === 'injured' || member.healthStatus === 'fatigued' || member.stress >= 70) ?? state.crew[0];
   const crewCondition = deckCrew?.healthStatus !== 'healthy' ? deckCrew?.healthStatus : (deckCrew?.stress ?? 0) >= 70 ? 'estresado' : 'healthy';
   const crewConditionLabel = crewCondition === 'healthy' ? '' : crewCondition === 'critical' ? 'CRÍTICO' : crewCondition === 'injured' ? 'HERIDO' : crewCondition === 'fatigued' ? 'CANSADO' : 'ESTRESADO';
   const faultClasses = Object.entries(state.systems).filter(([, status]) => status !== 'operational').map(([system]) => `fault-${system}`).join(' ');
 
-  const move = useCallback((direction: number) => {
-    setFacing(direction < 0 ? -1 : 1);
-    setWalking(true);
-    window.clearTimeout(walkTimer.current);
-    walkTimer.current = window.setTimeout(() => setWalking(false), 260);
-    setPlayerX((current) => Math.max(3, Math.min(97, current + direction * 2)));
+  const movementDirection = useCallback(() => {
+    const keyboard = Number(pressedKeys.current.has('ArrowRight') || pressedKeys.current.has('d')) -
+      Number(pressedKeys.current.has('ArrowLeft') || pressedKeys.current.has('a'));
+    return keyboard || pointerDirection.current;
   }, []);
 
-  useEffect(() => () => window.clearTimeout(walkTimer.current), []);
+  const stopMovement = useCallback(() => {
+    if (movementFrame.current !== undefined) cancelAnimationFrame(movementFrame.current);
+    movementFrame.current = undefined;
+    lastMovementFrame.current = 0;
+    setWalking(false);
+  }, []);
+
+  const startMovement = useCallback(() => {
+    if (movementFrame.current !== undefined) return;
+    setWalking(true);
+    const tick = (now: number) => {
+      const direction = movementDirection();
+      if (!direction) { stopMovement(); return; }
+      setFacing(direction < 0 ? -1 : 1);
+      const elapsed = lastMovementFrame.current ? Math.min(40, now - lastMovementFrame.current) : 16;
+      lastMovementFrame.current = now;
+      setPlayerX(current => {
+        const next = Math.max(3, Math.min(97, current + direction * 0.014 * elapsed));
+        return next;
+      });
+      movementFrame.current = requestAnimationFrame(tick);
+    };
+    movementFrame.current = requestAnimationFrame(tick);
+  }, [movementDirection, stopMovement]);
+
+  const pressDirection = useCallback((direction: 1 | -1) => {
+    pointerDirection.current = direction;
+    startMovement();
+  }, [startMovement]);
+
+  const releaseDirection = useCallback(() => {
+    pointerDirection.current = 0;
+    if (!movementDirection()) stopMovement();
+  }, [movementDirection, stopMovement]);
+
+  useEffect(() => {
+    const preload = new Image();
+    preload.src = '/sprites/astronaut-walk.gif';
+    return () => stopMovement();
+  }, [stopMovement]);
 
   useEffect(() => {
     onTaskOpenChange?.(taskOpen);
@@ -128,21 +173,30 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
     }
   }, [taskOpen]);
 
-  useEffect(() => {
+  const followPlayer = useCallback(() => {
     const viewport = viewportRef.current;
     const stage = viewport?.querySelector<HTMLElement>('.operations-scene');
     if (!viewport || !stage) return;
-    const followPlayer = () => {
-      const target = (visiblePlayerX / 100) * stage.scrollWidth;
-      const maxScroll = Math.max(0, stage.scrollWidth - viewport.clientWidth);
-      const left = Math.max(0, Math.min(maxScroll, target - viewport.clientWidth * 0.45));
-      viewport.scrollTo({ left, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
-    };
-    followPlayer();
+    const target = (visiblePlayerXRef.current / 100) * stage.scrollWidth;
+    const maxScroll = Math.max(0, stage.scrollWidth - viewport.clientWidth);
+    viewport.scrollLeft = Math.max(0, Math.min(maxScroll, target - viewport.clientWidth * 0.45));
+  }, []);
+
+  useEffect(() => { visiblePlayerXRef.current = visiblePlayerX; }, [visiblePlayerX]);
+  useEffect(followPlayer, [followPlayer, visiblePlayerX]);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
     const observer = new ResizeObserver(followPlayer);
     observer.observe(viewport);
     return () => observer.disconnect();
-  }, [visiblePlayerX]);
+  }, [followPlayer]);
+
+  useEffect(() => {
+    if (!coopPlayerId) return;
+    sendCoopMovement?.({ x: visiblePlayerX, facing, walking });
+  }, [coopPlayerId, facing, sendCoopMovement, visiblePlayerX, walking]);
 
   const openNearby = () => {
     if (nearby && !disabled) {
@@ -166,8 +220,8 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
         return;
       }
       if (target?.closest('button, input, [role="slider"]')) return;
-      if (event.key === 'ArrowLeft' || event.key.toLowerCase() === 'a') { event.preventDefault(); move(-1); }
-      if (event.key === 'ArrowRight' || event.key.toLowerCase() === 'd') { event.preventDefault(); move(1); }
+      if (event.key === 'ArrowLeft' || event.key.toLowerCase() === 'a') { event.preventDefault(); pressedKeys.current.add(event.key === 'ArrowLeft' ? 'ArrowLeft' : 'a'); startMovement(); }
+      if (event.key === 'ArrowRight' || event.key.toLowerCase() === 'd') { event.preventDefault(); pressedKeys.current.add(event.key === 'ArrowRight' ? 'ArrowRight' : 'd'); startMovement(); }
       if (event.key.toLowerCase() === 'e' || event.key === 'Enter') {
         event.preventDefault();
         if (nearbyStation && !disabled) {
@@ -181,9 +235,23 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
         }
       }
     };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key === 'ArrowLeft') pressedKeys.current.delete('ArrowLeft');
+      else if (event.key === 'ArrowRight') pressedKeys.current.delete('ArrowRight');
+      else pressedKeys.current.delete(event.key.toLowerCase());
+      if (!movementDirection()) stopMovement();
+    };
+    const onBlur = () => { pressedKeys.current.clear(); pointerDirection.current = 0; stopMovement(); };
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [active, disabled, move, nearbyStation, onFocusHandled, taskOpen]);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
+      onBlur();
+    };
+  }, [active, disabled, movementDirection, nearbyStation, onFocusHandled, startMovement, stopMovement, taskOpen]);
 
   const closeTask = () => { setTaskStation(null); onFocusHandled?.(); };
 
@@ -254,7 +322,17 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
           </picture>
           <span className="player-shadow" />
           {crewCondition !== 'healthy' && <span className="crew-condition-mark" aria-hidden="true">{deckCrew?.name} · {crewConditionLabel}</span>}
+          {coop?.session && <span className="coop-player-name">{coop.session.playerName}</span>}
         </div>
+        {coop?.players.filter(player => player.id !== coop.session?.playerId).map((player, index) => {
+          const movement = coop.movements[player.id];
+          const remoteX = movement?.x ?? 8 + (index + 1) * 2;
+          return <div key={player.id} className={`ship-player remote-player coop-color-${(coop.players.findIndex(item => item.id === player.id) + 4) % 4}`} style={{ left: `${remoteX}%` }} role="img" aria-label={`${player.name}, jugador conectado`}>
+            <img className="operation-crew" src={movement?.walking ? '/sprites/astronaut-walk.gif' : '/sprites/astronaut-idle.png'} alt="" style={{ transform: movement?.facing === -1 ? 'scaleX(-1)' : undefined }} />
+            <span className="player-shadow" />
+            <span className="coop-player-name">{player.name}</span>
+          </div>;
+        })}
         {nearby && !taskOpen && <button type="button" className="interact-prompt" style={{ left: `${visiblePlayerX}%` }} onClick={openNearby} disabled={disabled}>E · {nearby.active ? 'REPARAR' : 'USAR'} {nearby.label}</button>}
 
       </div>
@@ -292,8 +370,8 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
 
       <div className="operations-controls">
         <div className="dpad" role="group" aria-label="Controles de movimiento">
-          <button type="button" onClick={() => move(-1)} aria-label="Caminar a la izquierda">◀</button>
-          <button type="button" onClick={() => move(1)} aria-label="Caminar a la derecha">▶</button>
+          <button type="button" onPointerDown={() => pressDirection(-1)} onPointerUp={releaseDirection} onPointerCancel={releaseDirection} onPointerLeave={releaseDirection} onClick={event => { if (event.detail === 0) { setPlayerX(current => Math.max(3, current - 2)); setFacing(-1); } }} aria-label="Caminar a la izquierda">◀</button>
+          <button type="button" onPointerDown={() => pressDirection(1)} onPointerUp={releaseDirection} onPointerCancel={releaseDirection} onPointerLeave={releaseDirection} onClick={event => { if (event.detail === 0) { setPlayerX(current => Math.min(97, current + 2)); setFacing(1); } }} aria-label="Caminar a la derecha">▶</button>
         </div>
         <p className="t-small text-px-dim"><strong className="operation-steps">1 CAMINA</strong> <kbd>A</kbd> <kbd>D</kbd> o ← → · <strong className="operation-steps">2 USA</strong> <kbd>E</kbd> · móvil: flechas, desliza la nave y toca la estación.</p>
         {nearby && !taskOpen && <Button variant="primary" onClick={openNearby} disabled={disabled}>{nearby.active ? 'Reparar sistema' : 'Hacer tarea'}</Button>}

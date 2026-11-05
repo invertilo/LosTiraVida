@@ -14,6 +14,8 @@ import { Tutorial } from './components/Tutorial';
 import { Lander, Planet } from './components/sprites';
 import { Button, IconButton, Panel, SegmentedControl } from './components/primitives';
 import { FlaskIcon, MedicalIcon, MinusIcon, PlayIcon, PlusIcon, QuestionIcon, StarIcon, WrenchIcon } from './components/icons';
+import { CoopLobby } from './components/CoopLobby';
+import { useCoopSession, type CoopSessionController } from './hooks/useCoopSession';
 
 const TUTORIAL_KEY = 'outpost.tutorialSeen.v1';
 const MIN_CREW = 2;
@@ -76,6 +78,7 @@ export default function App() {
   const [missionKey, setMissionKey] = useState(0);
   const [tutorialOpen, setTutorialOpen] = useState(false);
   const [savedGame, setSavedGame] = useState(() => readMissionSave());
+  const coop = useCoopSession();
 
   const openTutorial = useCallback(() => setTutorialOpen(true), []);
   const closeTutorial = useCallback(() => {
@@ -85,6 +88,7 @@ export default function App() {
 
   const begin = () => {
     // SFX: "game start" fanfare, 4 rising square-wave notes
+    coop.leave();
     setMissionKey((k) => k + 1);
     setSavedGame(null);
     writeMissionSave(null);
@@ -93,6 +97,7 @@ export default function App() {
   };
 
   const continueMission = () => {
+    coop.leave();
     const save = readMissionSave();
     if (!save) { setSavedGame(null); return; }
     setLocation(save.state.location);
@@ -102,6 +107,20 @@ export default function App() {
     setMissionKey((k) => k + 1);
     setPhase('mission');
   };
+
+  useEffect(() => {
+    const start = coop.startMessage;
+    if (!start || phase === 'mission') return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a Realtime start event transitions every client together
+    setLocation(start.location);
+    setCrewCount(start.crewCount);
+    setDifficulty(start.difficulty);
+    setSavedGame(null);
+    writeMissionSave(null);
+    setMissionKey((key) => key + 1);
+    setPhase('mission');
+    if (!readSeen()) setTimeout(() => setTutorialOpen(true), 500);
+  }, [coop.startMessage, phase]);
 
   useEffect(() => {
     document.title = phase === 'mission' ? `Puesto ${DESTINATIONS[location].name} · Control de misión` : 'Outpost · Simulador de misión';
@@ -129,6 +148,8 @@ export default function App() {
                   setSavedGame(null);
                 }
               }}
+              coop={coop}
+              onStartCoop={() => { void coop.sendStart({ location, crewCount, difficulty }); }}
             />
           </motion.div>
         ) : (
@@ -143,10 +164,15 @@ export default function App() {
               location={location}
               crewCount={crewCount}
               difficulty={difficulty}
-              onExit={() => { setSavedGame(readMissionSave()); setPhase('setup'); }}
               onOpenTutorial={openTutorial}
               tutorialOpen={tutorialOpen}
               savedGame={savedGame}
+              coop={coop.session ? coop : null}
+              onExit={() => {
+                coop.leave();
+                setSavedGame(readMissionSave());
+                setPhase('setup');
+              }}
             />
           </motion.div>
         )}
@@ -176,9 +202,11 @@ interface SetupProps {
   canContinue: boolean;
   onContinue: () => void;
   onDeleteSave: () => void;
+  coop: CoopSessionController;
+  onStartCoop: () => void;
 }
 
-function Setup({ location, setLocation, crewCount, setCrewCount, difficulty, setDifficulty, onBegin, onOpenTutorial, canContinue, onContinue, onDeleteSave }: SetupProps) {
+function Setup({ location, setLocation, crewCount, setCrewCount, difficulty, setDifficulty, onBegin, onOpenTutorial, canContinue, onContinue, onDeleteSave, coop, onStartCoop }: SetupProps) {
   const crewLabelId = useId();
   const dest = DESTINATIONS[location];
   const [hiScore] = useState(readHiScore);
@@ -357,13 +385,23 @@ function Setup({ location, setLocation, crewCount, setCrewCount, difficulty, set
                 Cómo jugar
               </Button>
             </div>
+
+            <div className="rule8" aria-hidden="true" />
+
+            <div className="flex flex-col gap-3">
+              <div>
+                <h2 className="t-title text-px-white">Cooperativo en línea</h2>
+                <p className="t-body text-px-dim mt-2">Crea una sala o únete con un código. Hasta cuatro jugadores comparten la misma misión.</p>
+              </div>
+              <CoopLobby coop={coop} onStart={onStartCoop} />
+            </div>
           </Panel>
 
           <p className="mt-8 text-center t-small text-px-dim text-pretty">
             Energía: panel solar de {POWER_SYSTEM.solar_panel_area_m2} m2, batería de {POWER_SYSTEM.battery_capacity_kwh} kWh y reactor{' '}
             Kilopower de {POWER_SYSTEM.fission_baseload_kw} kW.
           </p>
-          <p className="mt-3 text-center t-tag text-px-dim">© 2026 #LosTiraVida · 1 jugador</p>
+          <p className="mt-3 text-center t-tag text-px-dim">© 2026 #LosTiraVida · 1–4 jugadores</p>
         </div>
       </main>
     </div>

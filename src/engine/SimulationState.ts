@@ -114,7 +114,7 @@ export class MissionSimulator {
   }
 
   static restore(save: SimulatorSaveData): MissionSimulator {
-    if (!isValidSimulatorSaveData(save)) throw new Error('Partida guardada incompatible');
+    if (!isValidSimulatorSaveData(save, true)) throw new Error('Partida guardada incompatible');
     const simulator = new MissionSimulator(save.state.location, save.state.crew.length, save.state.difficulty);
     simulator.state = JSON.parse(JSON.stringify(save.state)) as SimulationState;
     simulator.state.completedMaintenanceTasks ??= [];

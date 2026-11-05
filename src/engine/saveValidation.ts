@@ -64,16 +64,21 @@ function validObjective(objective: unknown): objective is MissionObjective {
     finite(objective.progress, 0) && finite(objective.target, 0) && typeof objective.unit === 'string' && typeof objective.explanation === 'string';
 }
 
-function validState(state: unknown): state is SimulationState {
+function validState(state: unknown, allowFinished: boolean): state is SimulationState {
   if (!isObject(state) || !['moon', 'mars'].includes(String(state.location)) || !['easy', 'normal', 'hard'].includes(String(state.difficulty)) ||
     !integer(state.dayNumber, 1) || !finite(state.hourOfDay, 0) || typeof state.isDay !== 'boolean' ||
-    state.missionSuccess !== null || !finite(state.radiationExposure, 0) || !Array.isArray(state.crew) || state.crew.length === 0 || state.crew.length > 6 ||
+    (state.missionSuccess !== null && (!allowFinished || typeof state.missionSuccess !== 'boolean')) || !finite(state.radiationExposure, 0) || !Array.isArray(state.crew) || state.crew.length === 0 || state.crew.length > 6 ||
     !state.crew.every(validCrew) || new Set(state.crew.map(member => member.id)).size !== state.crew.length ||
     !isObject(state.resources) || !isObject(state.systems) ||
     !validAllocation(state.allocation, state.crew) || !Array.isArray(state.eventLog) || !state.eventLog.every(validEvent) ||
     !Array.isArray(state.activeEffects) || !state.activeEffects.every(effect => validEffect(effect, true)) ||
     !Array.isArray(state.objectives) || state.objectives.length !== OBJECTIVE_IDS.size || !state.objectives.every(validObjective) ||
-    new Set(state.objectives.map(objective => objective.id)).size !== OBJECTIVE_IDS.size || state.outcome !== null) return false;
+    new Set(state.objectives.map(objective => objective.id)).size !== OBJECTIVE_IDS.size) return false;
+  if (state.missionSuccess === null) {
+    if (state.outcome !== null) return false;
+  } else if (!isObject(state.outcome) || state.outcome.success !== state.missionSuccess ||
+    !finite(state.outcome.elapsedEarthDays, 0) || !Array.isArray(state.outcome.objectives) ||
+    state.outcome.objectives.length !== OBJECTIVE_IDS.size || !state.outcome.objectives.every(validObjective)) return false;
   const resources = state.resources;
   const systems = state.systems;
   if (!RESOURCE_KEYS.every(key => finite(resources[key], 0)) ||
@@ -82,8 +87,8 @@ function validState(state: unknown): state is SimulationState {
     state.completedMaintenanceTasks.every(task => isObject(task) && integer(task.day, 1) && typeof task.station === 'string' && STATIONS.has(task.station)));
 }
 
-export function isValidSimulatorSaveData(value: unknown): value is SimulatorSaveData {
-  if (!isObject(value) || value.schemaVersion !== 1 || !validState(value.state) || !integer(value.nextEffectId, 1) || !isObject(value.eventCooldowns)) return false;
+export function isValidSimulatorSaveData(value: unknown, allowFinished = false): value is SimulatorSaveData {
+  if (!isObject(value) || value.schemaVersion !== 1 || !validState(value.state, allowFinished) || !integer(value.nextEffectId, 1) || !isObject(value.eventCooldowns)) return false;
   const highestEffectId = value.state.activeEffects.reduce((highest, effect) => Math.max(highest, effect.id), 0);
   return value.nextEffectId > highestEffectId && Object.entries(value.eventCooldowns)
     .every(([kind, cooldown]) => EFFECT_KINDS.has(kind) && finite(cooldown, 0));

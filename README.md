@@ -11,7 +11,7 @@ Administra energía, recursos y tripulación durante una misión de 365 días. C
 [![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Vite](https://img.shields.io/badge/Vite-8-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vite.dev/)
-[![Tests](https://img.shields.io/badge/tests-123%20passing-62FF73?style=for-the-badge)](#calidad)
+[![Tests](https://img.shields.io/badge/tests-131%20passing-62FF73?style=for-the-badge)](#calidad)
 [![Vercel](https://img.shields.io/badge/Vercel-online-000000?style=for-the-badge&logo=vercel)](https://los-tira-vida.vercel.app)
 
 [Jugar ahora](https://los-tira-vida.vercel.app) · [Cómo funciona](#cómo-se-juega) · [Instalación](#desarrollo-local) · [Equipo](#equipo)
@@ -38,6 +38,7 @@ No es un tablero estático: el hábitat está vivo. Los personajes 8-BIT patrull
 | --- | --- |
 | **Tripulación visible** | Cuatro especialistas animados trabajan en control, soporte vital, laboratorio e hidroponía. |
 | **Nave explorable** | Recorre el hábitat y su ala de ingeniería en una cubierta lateral larga con luces, cielo marciano y alertas ligadas al estado de la misión. |
+| **Cooperativo en línea** | Crea una sala con código para hasta cuatro personas. El anfitrión sincroniza la simulación, las acciones y la posición de cada jugador. |
 | **Reparaciones jugables** | Seis estaciones ofrecen minijuegos cortos de energía, soporte vital, cultivos, comunicaciones, blindaje y agua. Las alertas llevan directamente al sistema afectado; asignar especialistas acelera más la reparación y cada tarea modifica recursos o adelanta una avería real. |
 | **Recursos conectados** | Oxígeno, agua, alimentos, batería y radiación evolucionan cada hora. |
 | **Energía limitada** | Distribuyes el presupuesto entre soporte vital, escudo e hidroponía. Nunca alcanza para todo. |
@@ -64,6 +65,10 @@ La consola parpadea en rojo cuando un sistema necesita atención; cada alerta ex
 
 La velocidad `1X` representa una hora simulada por segundo. `2X` y `4X` permiten avanzar con rapidez sin perder el control de las emergencias.
 
+### Cooperativo en línea
+
+En la pantalla inicial, escribe tu nombre y crea una sala. Comparte el código de seis caracteres para que se unan hasta tres personas más. Todos ven la misma misión y pueden caminar, distribuir energía, asignar personal y resolver tareas. El anfitrión mantiene el estado autoritativo y debe conservar abierta su pestaña durante la partida.
+
 ### Señales importantes
 
 - **Verde:** el sistema opera normalmente.
@@ -85,6 +90,7 @@ React 19 + TypeScript
 ├── Sistema probabilístico de eventos
 ├── Física y constantes de misión
 ├── Componentes de interfaz accesibles
+├── Salas cooperativas P2P con PeerJS/WebRTC
 ├── Animaciones Motion + CSS
 └── Vite 8 + Tailwind CSS 4
 ```
@@ -103,6 +109,8 @@ cd LosTiraVida
 npm install
 npm run dev
 ```
+
+Las salas cooperativas usan WebRTC y el servidor público de señalización de PeerJS Cloud. No requieren cuentas adicionales, tablas ni variables de entorno.
 
 Abre [http://localhost:5173](http://localhost:5173).
 

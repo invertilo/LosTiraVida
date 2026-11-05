@@ -3,8 +3,9 @@ import { MissionSimulator } from '../engine/SimulationState';
 import type { SimulatorSaveData } from '../engine/SimulationState';
 import { writeMissionSave } from '../engine/save';
 import { SimulationState, LocationType, Difficulty, ResourceAllocation, AstronautRole, MaintenanceStation } from '../engine/types';
+import type { CoopSnapshot } from '../lib/coop';
 
-export function useSimulation(location: LocationType, crewCount: number = 4, difficulty: Difficulty = 'normal', savedGame: SimulatorSaveData | null = null, pauseOnWarnings = false, interactionPaused = false) {
+export function useSimulation(location: LocationType, crewCount: number = 4, difficulty: Difficulty = 'normal', savedGame: SimulatorSaveData | null = null, pauseOnWarnings = false, interactionPaused = false, remoteSnapshot: CoopSnapshot | null = null, readOnly = false) {
   const [state, setState] = useState<SimulationState | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [speed, setSpeed] = useState(1);
@@ -22,9 +23,18 @@ export function useSimulation(location: LocationType, crewCount: number = 4, dif
     setState(simulator.getState());
   }, [location, crewCount, difficulty, savedGame]);
 
+  useEffect(() => {
+    if (!readOnly || !remoteSnapshot) return;
+    const simulator = MissionSimulator.restore(remoteSnapshot.save);
+    simulatorRef.current = simulator;
+    setState(simulator.getState());
+    setIsRunning(remoteSnapshot.running);
+    setSpeed(remoteSnapshot.speed);
+  }, [readOnly, remoteSnapshot]);
+
   // Run simulation loop
   useEffect(() => {
-    if (!isRunning || interactionPaused || !simulatorRef.current) return;
+    if (readOnly || !isRunning || interactionPaused || !simulatorRef.current) return;
 
     const interval = setInterval(() => {
       if (!simulatorRef.current) return;
@@ -51,15 +61,15 @@ export function useSimulation(location: LocationType, crewCount: number = 4, dif
     }, 1000 / speed); // 1X = one simulated hour per real second
 
     return () => clearInterval(interval);
-  }, [isRunning, speed, pauseOnWarnings, interactionPaused]);
+  }, [isRunning, speed, pauseOnWarnings, interactionPaused, readOnly]);
 
   useEffect(() => {
-    if (!isRunning || !simulatorRef.current) return;
+    if (readOnly || !isRunning || !simulatorRef.current) return;
     const id = window.setInterval(() => {
       if (simulatorRef.current?.isMissionRunning()) writeMissionSave(simulatorRef.current.serialize());
     }, 5000);
     return () => window.clearInterval(id);
-  }, [isRunning]);
+  }, [isRunning, readOnly]);
 
   // Persist at browser lifecycle boundaries; timers are not guaranteed to run before a tab is discarded.
   useEffect(() => {
@@ -128,5 +138,6 @@ export function useSimulation(location: LocationType, crewCount: number = 4, dif
     completeTask,
     restart,
     saveNow,
+    serializeNow: () => simulatorRef.current?.serialize() ?? null,
   };
 }

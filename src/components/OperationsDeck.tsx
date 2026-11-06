@@ -27,6 +27,11 @@ const COLORS = ['cyan', 'yellow', 'red'] as const;
 const WIRE_SEQUENCE = ['yellow', 'cyan', 'red'] as const;
 const PLANT_TARGETS = [1, 3];
 const WATER_SEQUENCE = ['ABRIR', 'FILTRAR', 'RECIRCULAR'] as const;
+// 0.006% of the 2200px deck per millisecond = 132px/s. The local walk cycle
+// below advances from distance, completing one visual stride every 60px.
+const PLAYER_SPEED_PERCENT_PER_MS = 0.006;
+const PLAYER_STRIDE_PERCENT = (60 / 2200) * 100;
+const WALK_FRAME_COUNT = 8;
 const TASK_EXPERTISE: Record<MaintenanceStation, string[]> = {
   power: ['engineer'], lifeSupport: ['engineer'], hydroponics: ['scientist', 'botanist'],
   communications: ['commander'], radiationShield: ['engineer', 'geologist'], water: ['engineer', 'doctor'],
@@ -61,10 +66,12 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
   const movementFrame = useRef<number | undefined>(undefined);
   const lastMovementFrame = useRef(0);
   const lastPositionSync = useRef(0);
+  const walkedDistance = useRef(0);
   const pressedKeys = useRef(new Set<string>());
   const pointerDirection = useRef<1 | -1 | 0>(0);
   const viewportRef = useRef<HTMLDivElement>(null);
   const playerElementRef = useRef<HTMLDivElement>(null);
+  const crewElementRef = useRef<HTMLSpanElement>(null);
   const taskCloseRef = useRef<HTMLButtonElement>(null);
   const taskScoreRef = useRef<HTMLDivElement>(null);
   const lastFocusedRef = useRef<HTMLElement | null>(null);
@@ -137,10 +144,14 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
       }
       const elapsed = lastMovementFrame.current ? Math.min(40, now - lastMovementFrame.current) : 16;
       lastMovementFrame.current = now;
-      const next = Math.max(3, Math.min(97, playerXRef.current + direction * 0.014 * elapsed));
+      const previous = playerXRef.current;
+      const next = Math.max(3, Math.min(97, previous + direction * PLAYER_SPEED_PERCENT_PER_MS * elapsed));
+      walkedDistance.current += Math.abs(next - previous);
+      const walkFrame = Math.floor((walkedDistance.current % PLAYER_STRIDE_PERCENT) / PLAYER_STRIDE_PERCENT * WALK_FRAME_COUNT);
       playerXRef.current = next;
       visiblePlayerXRef.current = next;
       if (playerElementRef.current) playerElementRef.current.style.left = `${next}%`;
+      if (crewElementRef.current) crewElementRef.current.style.backgroundPositionX = `${walkFrame * 12.5}%`;
 
       const viewport = viewportRef.current;
       if (viewport) {
@@ -348,7 +359,7 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
         ))}
 
         <div ref={setPlayerElement} className={`ship-player crew-${crewCondition}`} role="img" aria-label={deckCrew ? `${deckCrew.name}, ${crewCondition === 'healthy' ? 'en buen estado' : crewCondition}` : 'Astronauta'}>
-          <span className={`operation-crew ${walking ? 'is-walking' : ''}`} aria-hidden="true" style={{ transform: facing < 0 ? 'scaleX(-1)' : undefined }} />
+          <span ref={crewElementRef} className={`operation-crew is-distance-synced ${walking ? 'is-walking' : ''}`} aria-hidden="true" style={{ transform: facing < 0 ? 'scaleX(-1)' : undefined }} />
           <span className="player-shadow" />
           {crewCondition !== 'healthy' && <span className="crew-condition-mark" aria-hidden="true">{deckCrew?.name} · {crewConditionLabel}</span>}
           {coop?.session && <span className="coop-player-name">{coop.session.playerName}</span>}

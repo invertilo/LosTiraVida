@@ -205,10 +205,18 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
   useEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
-    const syncOverlayPosition = () => viewport.style.setProperty('--operations-scroll-x', `${viewport.scrollLeft}px`);
+    const syncOverlayPosition = () => {
+      viewport.style.setProperty('--operations-scroll-x', `${viewport.scrollLeft}px`);
+      viewport.style.setProperty('--operations-center-x', `${viewport.scrollLeft + viewport.clientWidth / 2}px`);
+    };
     syncOverlayPosition();
     viewport.addEventListener('scroll', syncOverlayPosition, { passive: true });
-    return () => viewport.removeEventListener('scroll', syncOverlayPosition);
+    const observer = new ResizeObserver(syncOverlayPosition);
+    observer.observe(viewport);
+    return () => {
+      viewport.removeEventListener('scroll', syncOverlayPosition);
+      observer.disconnect();
+    };
   }, []);
 
   useEffect(() => {

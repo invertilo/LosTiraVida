@@ -18,7 +18,7 @@ const SYSTEM_NAME = {
   foodProduction: 'Hidroponía',
 } as const;
 
-const REPAIRABLE = new Set<ActiveEffect['kind']>(['equipment_failure', 'water_leak']);
+const REPAIRABLE = new Set<ActiveEffect['kind']>(['equipment_failure', 'water_leak', 'crop_disease']);
 function stationFor(e: ActiveEffect): MaintenanceStation {
   if (e.kind === 'water_leak') return 'water';
   if (e.kind === 'dust_storm' || (e.kind === 'equipment_failure' && e.system === 'power')) return 'power';
@@ -61,6 +61,7 @@ export function ActiveEffects({ state, onAssignCrew, onOpenManagement, onOpenOpe
   const { activeEffects: effects, crew, allocation } = state;
   if (!effects.length) return null;
   const needsRepair = effects.some((e) => REPAIRABLE.has(e.kind));
+  const hasMechanicalRepair = effects.some((e) => e.kind === 'equipment_failure' || e.kind === 'water_leak');
   const cropDisease = effects.find(e => e.kind === 'crop_disease');
   const assigned = allocation.maintenancePersonnel;
 
@@ -98,7 +99,7 @@ export function ActiveEffects({ state, onAssignCrew, onOpenManagement, onOpenOpe
             Asigna personal para terminar antes. Reparar aumenta el estrés del tripulante.
           </p>
           <div className="repair-crew-grid">
-            {Array.from(new Set(crew.map((c) => c.role))).map((role) => {
+            {Array.from(new Set(crew.map((c) => c.role))).filter(role => hasMechanicalRepair || role === 'botanist' || role === 'scientist').map((role) => {
               const on = assigned.includes(role);
               return (
                 <button

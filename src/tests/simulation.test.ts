@@ -599,6 +599,20 @@ describe('Event effects (applied to the simulation)', () => {
     expect(slow.getState().activeEffects[0].remainingHours).toBe(15);
     expect(quick.getState().activeEffects[0].remainingHours).toBeCloseTo(24 - 9 * 2.5, 6);
   });
+
+  it('assigned science crew accelerate crop decontamination together with hydroponic power', () => {
+    const energyOnly = fresh(); const crewAssisted = fresh();
+    const spec = { kind: 'crop_disease' as const, durationHours: 0, magnitude: 1 };
+    energyOnly.applyEventEffect(spec); crewAssisted.applyEventEffect(spec);
+    energyOnly.setResourceAllocation({ foodProductionPower: 60 });
+    crewAssisted.setResourceAllocation({ foodProductionPower: 60 });
+    expect(crewAssisted.assignCrew('scientist', 'maintenance')).toBe(true);
+    energyOnly.step(); crewAssisted.step();
+    const energyRemaining = energyOnly.getState().activeEffects[0].remainingHours;
+    const assisted = crewAssisted.getState().activeEffects[0];
+    expect(assisted.remainingHours).toBeLessThan(energyRemaining);
+    expect(assisted.hoursSavedByCrew).toBeGreaterThan(0);
+  });
 });
 
 describe('Allocation and crew assignment validation', () => {

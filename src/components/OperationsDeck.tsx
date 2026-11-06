@@ -27,6 +27,19 @@ const COLORS = ['cyan', 'yellow', 'red'] as const;
 const WIRE_SEQUENCE = ['yellow', 'cyan', 'red'] as const;
 const PLANT_TARGETS = [1, 3];
 const WATER_SEQUENCE = ['ABRIR', 'FILTRAR', 'RECIRCULAR'] as const;
+const POWER_LOAD_TARGET = [40, 35, 25];
+const NUTRIENT_TARGET = [45, 30, 25];
+const SIGNAL_SYMBOLS = ['▲', '●', '■', '◆'] as const;
+const SIGNAL_PATTERNS = [
+  ['▲', '■', '●', '◆'],
+  ['◆', '●', '▲', '■'],
+  ['■', '▲', '◆', '●'],
+] as const;
+const ALTERNATE_TASK_TITLE: Partial<Record<MaintenanceStation, string>> = {
+  power: 'Equilibra los tres buses de potencia',
+  hydroponics: 'Prepara la solución nutritiva N/P/K',
+  communications: 'Memoriza y retransmite el código de enlace',
+};
 // 0.012% of the 2200px deck per millisecond = 264px/s. One 180px gait takes
 // about 680ms, so the character travels responsively without rapid pedalling.
 const PLAYER_SPEED_PERCENT_PER_MS = 0.012;
@@ -45,6 +58,14 @@ function keepPlayerInView(viewport: HTMLDivElement, playerPercent: number) {
   } else if (positionInViewport > rightLimit) {
     viewport.scrollLeft = Math.min(maxScroll, playerPixel - rightLimit);
   }
+}
+
+function adjustChannel(values: number[], index: number, delta: number) {
+  return values.map((value, channel) => channel === index ? Math.max(0, Math.min(100, value + delta)) : value);
+}
+
+function matchesTarget(values: number[], target: readonly number[]) {
+  return values.length === target.length && values.every((value, index) => value === target[index]);
 }
 const TASK_EXPERTISE: Record<MaintenanceStation, string[]> = {
   power: ['engineer'], lifeSupport: ['engineer'], hydroponics: ['scientist', 'botanist'],
@@ -73,6 +94,10 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
   const [plants, setPlants] = useState<number[]>([]);
   const [frequency, setFrequency] = useState(96);
   const [shieldSetting, setShieldSetting] = useState(50);
+  const [powerLoads, setPowerLoads] = useState([20, 50, 30]);
+  const [nutrientMix, setNutrientMix] = useState([25, 50, 25]);
+  const [memoryInput, setMemoryInput] = useState(false);
+  const [memoryProgress, setMemoryProgress] = useState(0);
   const [toast, setToast] = useState('');
   const [crewChoice, setCrewChoice] = useState<{ station: MaintenanceStation; crewId: string } | null>(null);
   const playerXRef = useRef(playerX);
@@ -114,6 +139,12 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
   const nearby = stations.find((station) => Math.abs(station.x - visiblePlayerX) < 5.5 && !completed.includes(station.id));
   const activeTaskStation = active && focusStation ? focusStation : taskStation;
   const selected = stations.find((station) => station.id === activeTaskStation);
+  const selectedIndex = activeTaskStation ? BASE_STATIONS.findIndex(station => station.id === activeTaskStation) : -1;
+  const alternateTask = selectedIndex >= 0 && (state.dayNumber + selectedIndex) % 2 === 0;
+  const signalPattern = SIGNAL_PATTERNS[state.dayNumber % SIGNAL_PATTERNS.length];
+  const taskTitle = activeTaskStation && alternateTask
+    ? ALTERNATE_TASK_TITLE[activeTaskStation] ?? selected?.task
+    : selected?.task;
   const eligibleCrew = state.crew.filter(member => member.healthStatus !== 'critical');
   const defaultCrewId = activeTaskStation
     ? eligibleCrew.find(member => TASK_EXPERTISE[activeTaskStation].includes(member.role))?.id ?? eligibleCrew[0]?.id ?? ''
@@ -129,6 +160,18 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
   const crewCondition = deckCrew?.healthStatus !== 'healthy' ? deckCrew?.healthStatus : (deckCrew?.stress ?? 0) >= 70 ? 'estresado' : 'healthy';
   const crewConditionLabel = crewCondition === 'healthy' ? '' : crewCondition === 'critical' ? 'CRÍTICO' : crewCondition === 'injured' ? 'HERIDO' : crewCondition === 'fatigued' ? 'CANSADO' : 'ESTRESADO';
   const faultClasses = Object.entries(state.systems).filter(([, status]) => status !== 'operational').map(([system]) => `fault-${system}`).join(' ');
+
+  const resetTaskPuzzle = useCallback(() => {
+    setWireProgress(0);
+    setPressure(17);
+    setPlants([]);
+    setFrequency(96);
+    setShieldSetting(50);
+    setPowerLoads([20, 50, 30]);
+    setNutrientMix([25, 50, 25]);
+    setMemoryInput(false);
+    setMemoryProgress(0);
+  }, []);
 
   const movementDirection = useCallback(() => {
     const keyboard = Number(pressedKeys.current.has('ArrowRight') || pressedKeys.current.has('d')) -
@@ -260,11 +303,7 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
     if (nearby && !disabled) {
       lastFocusedRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       setTaskStation(nearby.id);
-      setWireProgress(0);
-      setPressure(17);
-      setPlants([]);
-      setFrequency(96);
-      setShieldSetting(50);
+      resetTaskPuzzle();
     }
   };
 
@@ -285,11 +324,7 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
         if (nearbyStation && !disabled) {
           lastFocusedRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
           setTaskStation(nearbyStation);
-          setWireProgress(0);
-          setPressure(17);
-          setPlants([]);
-          setFrequency(96);
-          setShieldSetting(50);
+          resetTaskPuzzle();
         }
       }
     };
@@ -309,7 +344,7 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
       window.removeEventListener('blur', onBlur);
       onBlur();
     };
-  }, [active, disabled, movementDirection, nearbyStation, onFocusHandled, startMovement, stopMovement, taskOpen]);
+  }, [active, disabled, movementDirection, nearbyStation, onFocusHandled, resetTaskPuzzle, startMovement, stopMovement, taskOpen]);
 
   const closeTask = () => { setTaskStation(null); onFocusHandled?.(); };
 
@@ -362,7 +397,7 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
             type="button"
             className={`ship-station station-${station.id} ${station.active ? 'station-alert' : ''} ${completed.includes(station.id) ? 'station-done' : ''} ${nearby?.id === station.id ? 'station-nearby' : ''}`}
             style={{ left: `${station.x}%` }}
-            onClick={(event) => { lastFocusedRef.current = event.currentTarget; setPlayerX(station.x - 1); setTaskStation(station.id); setWireProgress(0); setPressure(17); setPlants([]); setFrequency(96); setShieldSetting(50); }}
+            onClick={(event) => { lastFocusedRef.current = event.currentTarget; setPlayerX(station.x - 1); setTaskStation(station.id); resetTaskPuzzle(); }}
             aria-label={`${station.label}, ${station.active ? 'requiere atención' : 'operativo'}. Abrir tarea`}
             disabled={disabled || completed.includes(station.id)}
           >
@@ -403,7 +438,7 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
             }
           }}>
               <div className="task-card-head"><span className="t-tag text-px-cyan">TAREA DE SISTEMA</span><button ref={taskCloseRef} type="button" className="task-close" onClick={closeTask} aria-label="Cerrar tarea">×</button></div>
-            <h3 id="task-title" className="t-title text-px-white mt-3">{selected.task}</h3>
+            <h3 id="task-title" className="t-title text-px-white mt-3">{taskTitle}</h3>
             <p id="task-help" className="t-small text-px-dim mt-2">{selected.active ? 'La tarea adelanta hasta 6 horas la reparación; un especialista puede adelantar hasta 10.' : activeTaskStation === 'power' ? 'Diagnóstico preventivo: recupera hasta 6 kWh de batería.' : activeTaskStation === 'lifeSupport' ? 'Calibración preventiva: recupera 2 kg de oxígeno.' : activeTaskStation === 'hydroponics' ? 'Cosecha preventiva: suma 3 kg de alimentos.' : activeTaskStation === 'radiationShield' ? 'Calibración preventiva: reduce 1 mSv de la dosis acumulada.' : activeTaskStation === 'water' ? 'Mantenimiento preventivo: recupera 20 litros de agua.' : 'Ajuste preventivo: mejora 2 puntos la moral de toda la tripulación.'}</p>
             <label className="task-crew-select">ASIGNAR TRIPULANTE
               <select value={assignedCrewId} onChange={event => setCrewChoice({ station: activeTaskStation, crewId: event.target.value })}>
@@ -411,10 +446,44 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
               </select>
               <small>{eligibleCrew.length ? 'La especialidad acelera 4 h extra las averías; trabajar suma estrés.' : 'No hay tripulantes en condiciones de realizar la tarea.'}</small>
             </label>
-            {activeTaskStation === 'power' && <div className="task-game"><p className="task-instruction">Conecta los cables en el orden indicado</p><div className="wire-targets">{WIRE_SEQUENCE.map((color, index) => <span key={color} className={wireProgress > index ? `wire-dot ${color} connected` : `wire-dot ${color}`}>{wireProgress > index ? '✓' : index + 1}</span>)}</div><div className="wire-buttons">{COLORS.map((color) => <button key={color} type="button" className={`wire-button ${color}`} onClick={() => { if (color === WIRE_SEQUENCE[wireProgress]) { const next = wireProgress + 1; setWireProgress(next); if (next === WIRE_SEQUENCE.length) finish('power'); } else { setWireProgress(0); fail('SECUENCIA INCORRECTA · PRUEBA DE NUEVO'); } }}>{color === 'cyan' ? 'AZUL' : color === 'yellow' ? 'AMARILLO' : 'ROJO'}</button>)}</div></div>}
+            {activeTaskStation === 'power' && (alternateTask ? <div className="task-game">
+              <p className="task-instruction">Distribuye la carga exactamente en 40% / 35% / 25%</p>
+              <div className="balance-grid">
+                {['HÁBITAT', 'LABORATORIO', 'RESERVA'].map((label, index) => <div className="balance-channel" key={label}>
+                  <span>{label}</span><strong>{powerLoads[index]}%</strong>
+                  <div><button type="button" onClick={() => setPowerLoads(values => adjustChannel(values, index, -5))}>−</button><button type="button" onClick={() => setPowerLoads(values => adjustChannel(values, index, 5))}>+</button></div>
+                </div>)}
+              </div>
+              <p className="task-total">TOTAL {powerLoads.reduce((sum, value) => sum + value, 0)}%</p>
+              <button type="button" className="btn8 btn8-primary w-full" onClick={() => matchesTarget(powerLoads, POWER_LOAD_TARGET) ? finish('power') : fail('CARGA INESTABLE · OBJETIVO 40 / 35 / 25')}>VALIDAR DISTRIBUCIÓN</button>
+            </div> : <div className="task-game"><p className="task-instruction">Conecta los cables en el orden indicado</p><div className="wire-targets">{WIRE_SEQUENCE.map((color, index) => <span key={color} className={wireProgress > index ? `wire-dot ${color} connected` : `wire-dot ${color}`}>{wireProgress > index ? '✓' : index + 1}</span>)}</div><div className="wire-buttons">{COLORS.map((color) => <button key={color} type="button" className={`wire-button ${color}`} onClick={() => { if (color === WIRE_SEQUENCE[wireProgress]) { const next = wireProgress + 1; setWireProgress(next); if (next === WIRE_SEQUENCE.length) finish('power'); } else { setWireProgress(0); fail('SECUENCIA INCORRECTA · PRUEBA DE NUEVO'); } }}>{color === 'cyan' ? 'AZUL' : color === 'yellow' ? 'AMARILLO' : 'ROJO'}</button>)}</div></div>)}
             {activeTaskStation === 'lifeSupport' && <div className="task-game"><p className="task-instruction">Ajusta la presión a 21 kPa</p><div className="pressure-meter"><strong>{pressure}</strong><span> kPa</span><i style={{ width: `${Math.max(8, Math.min(100, pressure * 4))}%` }} /></div><div className="task-actions"><button type="button" className="btn8 btn8-secondary" onClick={() => setPressure((value) => Math.max(0, value - 1))}>− BAJAR</button><button type="button" className="btn8 btn8-primary" onClick={() => { const next = Math.min(30, pressure + 1); setPressure(next); if (next === 21) finish('lifeSupport'); }}>+ SUBIR</button></div></div>}
-            {activeTaskStation === 'hydroponics' && <div className="task-game"><p className="task-instruction">Retira solo las plantas con esporas</p><div className="plant-grid">{[0, 1, 2, 3].map((index) => <button key={index} type="button" disabled={plants.includes(index)} className={`plant-card ${plants.includes(index) ? 'plant-cleared' : ''} ${PLANT_TARGETS.includes(index) ? 'plant-spored' : ''}`} onClick={() => { if (PLANT_TARGETS.includes(index)) { const next = [...plants, index]; setPlants(next); if (next.length === PLANT_TARGETS.length) finish('hydroponics'); } else { setPlants([]); fail('CULTIVO SANO · NO LO RETIRES'); } }}><span>{plants.includes(index) ? '✓' : PLANT_TARGETS.includes(index) ? '✹' : '♣'}</span><small>CULTIVO {index + 1}</small></button>)}</div></div>}
-            {activeTaskStation === 'communications' && <div className="task-game"><p className="task-instruction">Sintoniza la señal de rescate: 100 MHz</p><div className="radio-display"><span>FREQ.</span><strong>{frequency.toFixed(0)}<small> MHz</small></strong><div className="radio-wave"><i /><i /><i /><i /><i /><i /><i /></div></div><div className="task-actions"><button type="button" className="btn8 btn8-secondary" onClick={() => setFrequency((value) => Math.max(90, value - 1))}>− AJUSTAR</button><button type="button" className="btn8 btn8-primary" onClick={() => { const next = Math.min(110, frequency + 1); setFrequency(next); if (next === 100) finish('communications'); }}>+ AJUSTAR</button></div></div>}
+            {activeTaskStation === 'hydroponics' && (alternateTask ? <div className="task-game">
+              <p className="task-instruction">Mezcla N / P / K exactamente en 45% / 30% / 25%</p>
+              <div className="balance-grid nutrient-grid">
+                {['NITRÓGENO', 'FÓSFORO', 'POTASIO'].map((label, index) => <div className="balance-channel" key={label}>
+                  <span>{label}</span><strong>{nutrientMix[index]}%</strong>
+                  <div><button type="button" onClick={() => setNutrientMix(values => adjustChannel(values, index, -5))}>−</button><button type="button" onClick={() => setNutrientMix(values => adjustChannel(values, index, 5))}>+</button></div>
+                </div>)}
+              </div>
+              <p className="task-total">TOTAL {nutrientMix.reduce((sum, value) => sum + value, 0)}%</p>
+              <button type="button" className="btn8 btn8-primary w-full" onClick={() => matchesTarget(nutrientMix, NUTRIENT_TARGET) ? finish('hydroponics') : fail('MEZCLA FUERA DE RANGO · OBJETIVO 45 / 30 / 25')}>INYECTAR SOLUCIÓN</button>
+            </div> : <div className="task-game"><p className="task-instruction">Retira solo las plantas con esporas</p><div className="plant-grid">{[0, 1, 2, 3].map((index) => <button key={index} type="button" disabled={plants.includes(index)} className={`plant-card ${plants.includes(index) ? 'plant-cleared' : ''} ${PLANT_TARGETS.includes(index) ? 'plant-spored' : ''}`} onClick={() => { if (PLANT_TARGETS.includes(index)) { const next = [...plants, index]; setPlants(next); if (next.length === PLANT_TARGETS.length) finish('hydroponics'); } else { setPlants([]); fail('CULTIVO SANO · NO LO RETIRES'); } }}><span>{plants.includes(index) ? '✓' : PLANT_TARGETS.includes(index) ? '✹' : '♣'}</span><small>CULTIVO {index + 1}</small></button>)}</div></div>)}
+            {activeTaskStation === 'communications' && (alternateTask ? <div className="task-game memory-task">
+              <p className="task-instruction">Memoriza el código y retransmítelo sin errores</p>
+              {!memoryInput ? <>
+                <div className="memory-sequence" aria-label={`Código: ${signalPattern.join(' ')}`}>{signalPattern.map((symbol, index) => <span key={`${symbol}-${index}`}>{symbol}</span>)}</div>
+                <button type="button" className="btn8 btn8-primary w-full" onClick={() => { setMemoryInput(true); setMemoryProgress(0); }}>OCULTAR Y RETRANSMITIR</button>
+              </> : <>
+                <p className="task-total">SEÑAL {memoryProgress} / {signalPattern.length}</p>
+                <div className="memory-buttons">{SIGNAL_SYMBOLS.map(symbol => <button key={symbol} type="button" onClick={() => {
+                  if (symbol !== signalPattern[memoryProgress]) { setMemoryInput(false); setMemoryProgress(0); fail('CÓDIGO INCORRECTO · MEMORIZA DE NUEVO'); return; }
+                  const next = memoryProgress + 1;
+                  setMemoryProgress(next);
+                  if (next === signalPattern.length) finish('communications');
+                }}>{symbol}</button>)}</div>
+              </>}
+            </div> : <div className="task-game"><p className="task-instruction">Sintoniza la señal de rescate: 100 MHz</p><div className="radio-display"><span>FREQ.</span><strong>{frequency.toFixed(0)}<small> MHz</small></strong><div className="radio-wave"><i /><i /><i /><i /><i /><i /><i /></div></div><div className="task-actions"><button type="button" className="btn8 btn8-secondary" onClick={() => setFrequency((value) => Math.max(90, value - 1))}>− AJUSTAR</button><button type="button" className="btn8 btn8-primary" onClick={() => { const next = Math.min(110, frequency + 1); setFrequency(next); if (next === 100) finish('communications'); }}>+ AJUSTAR</button></div></div>)}
             {activeTaskStation === 'radiationShield' && <div className="task-game"><p className="task-instruction">Ajusta la potencia protectora a 80%</p><div className="pressure-meter"><strong>{shieldSetting}</strong><span>% ESCUDO</span><i style={{ width: `${shieldSetting}%` }} /></div><div className="task-actions"><button type="button" className="btn8 btn8-secondary" onClick={() => setShieldSetting((value) => Math.max(30, value - 10))}>− BAJAR</button><button type="button" className="btn8 btn8-primary" onClick={() => { const next = Math.min(100, shieldSetting + 10); setShieldSetting(next); if (next === 80) finish('radiationShield'); }}>+ SUBIR</button></div></div>}
             {activeTaskStation === 'water' && <div className="task-game"><p className="task-instruction">Purga el circuito en el orden correcto</p><div className="wire-targets">{WATER_SEQUENCE.map((step, index) => <span key={step} className={wireProgress > index ? 'wire-dot cyan connected' : 'wire-dot cyan'}>{wireProgress > index ? '✓' : index + 1}</span>)}</div><div className="wire-buttons">{WATER_SEQUENCE.map((step, index) => <button key={step} type="button" className={`wire-button ${COLORS[index]}`} onClick={() => { if (step === WATER_SEQUENCE[wireProgress]) { const next = wireProgress + 1; setWireProgress(next); if (next === WATER_SEQUENCE.length) finish('water'); } else { setWireProgress(0); fail('VÁLVULA FUERA DE ORDEN · PRUEBA DE NUEVO'); } }}>{step}</button>)}</div></div>}
           </div>

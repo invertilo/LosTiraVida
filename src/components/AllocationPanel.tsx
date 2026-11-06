@@ -295,6 +295,16 @@ export function AllocationPanel({ allocation, onChange, location, crewCount, dif
           />
         ))}
 
+        {cropDiseaseActive && (
+          <button
+            type="button"
+            className="btn8 btn8-primary w-full"
+            onClick={() => set('foodProductionPower', Math.max(60, values.foodProductionPower))}
+          >
+            PRIORIZAR DESCONTAMINACIÓN · 60% HIDROPONÍA
+          </button>
+        )}
+
         <p
           className="tile8 t-small px-3 py-2 tabular flex items-start gap-2"
           style={{

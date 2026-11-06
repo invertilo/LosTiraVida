@@ -206,6 +206,17 @@ export class MissionSimulator {
     return rate;
   }
 
+  /** Extra hydroponics treatment supplied by assigned botany/science crew. */
+  private cropTreatmentCrewBonus(): number {
+    let bonus = 0;
+    for (const role of this.state.allocation.maintenancePersonnel) {
+      if (role !== 'botanist' && role !== 'scientist') continue;
+      const member = this.state.crew.find(c => c.role === role && c.healthStatus !== 'critical');
+      if (member) bonus += CREW_MODIFIERS[role]?.repair_speed_multiplier ?? 1;
+    }
+    return bonus;
+  }
+
   /** Count down active effects by one hour and drop the ones that ended. */
   private tickEffects(): void {
     const rate = this.repairRate();
@@ -214,9 +225,11 @@ export class MissionSimulator {
       const crewRepairable = e.kind === 'equipment_failure' || e.kind === 'water_leak';
       // Hydroponic allocation drives its own decontamination cycle (1x at 0%, up to 5x at 100%).
       const energyTreatmentRate = e.kind === 'crop_disease' ? 1 + this.state.allocation.foodProductionPower / 25 : 1;
+      const cropCrewBonus = e.kind === 'crop_disease' ? this.cropTreatmentCrewBonus() : 0;
       if (crewRepairable) e.hoursSavedByCrew = (e.hoursSavedByCrew ?? 0) + Math.max(0, rate - 1);
+      if (e.kind === 'crop_disease') e.hoursSavedByCrew = (e.hoursSavedByCrew ?? 0) + cropCrewBonus;
       if (e.kind === 'crop_disease') e.hoursSavedByEnergy = (e.hoursSavedByEnergy ?? 0) + Math.max(0, energyTreatmentRate - 1);
-      e.remainingHours -= crewRepairable ? rate : e.kind === 'crop_disease' ? energyTreatmentRate : 1;
+      e.remainingHours -= crewRepairable ? rate : e.kind === 'crop_disease' ? energyTreatmentRate + cropCrewBonus : 1;
       if (e.remainingHours > 0) {
         kept.push(e);
         continue;
@@ -426,7 +439,7 @@ export class MissionSimulator {
   }
 
   private updateCrewStatus(): void {
-    const repairing = this.state.activeEffects.some(e => e.kind === 'equipment_failure' || e.kind === 'water_leak');
+    const repairing = this.state.activeEffects.some(e => e.kind === 'equipment_failure' || e.kind === 'water_leak' || e.kind === 'crop_disease');
     this.state.crew.forEach(astronaut => {
       // Stress increases naturally, decreases with good conditions
       let stressChange = 0.1; // base increase per hour

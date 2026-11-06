@@ -27,11 +27,25 @@ const COLORS = ['cyan', 'yellow', 'red'] as const;
 const WIRE_SEQUENCE = ['yellow', 'cyan', 'red'] as const;
 const PLANT_TARGETS = [1, 3];
 const WATER_SEQUENCE = ['ABRIR', 'FILTRAR', 'RECIRCULAR'] as const;
-// 0.006% of the 2200px deck per millisecond = 132px/s. The local walk cycle
-// below advances from distance, completing one visual stride every 60px.
-const PLAYER_SPEED_PERCENT_PER_MS = 0.006;
-const PLAYER_STRIDE_PERCENT = (60 / 2200) * 100;
+// 0.012% of the 2200px deck per millisecond = 264px/s. One 180px gait takes
+// about 680ms, so the character travels responsively without rapid pedalling.
+const PLAYER_SPEED_PERCENT_PER_MS = 0.012;
+const PLAYER_STRIDE_PERCENT = (180 / 2200) * 100;
 const WALK_FRAME_COUNT = 8;
+
+function keepPlayerInView(viewport: HTMLDivElement, playerPercent: number) {
+  const playerPixel = playerPercent / 100 * viewport.scrollWidth;
+  const positionInViewport = playerPixel - viewport.scrollLeft;
+  const leftLimit = viewport.clientWidth * 0.3;
+  const rightLimit = viewport.clientWidth * 0.7;
+  const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
+
+  if (positionInViewport < leftLimit) {
+    viewport.scrollLeft = Math.max(0, playerPixel - leftLimit);
+  } else if (positionInViewport > rightLimit) {
+    viewport.scrollLeft = Math.min(maxScroll, playerPixel - rightLimit);
+  }
+}
 const TASK_EXPERTISE: Record<MaintenanceStation, string[]> = {
   power: ['engineer'], lifeSupport: ['engineer'], hydroponics: ['scientist', 'botanist'],
   communications: ['commander'], radiationShield: ['engineer', 'geologist'], water: ['engineer', 'doctor'],
@@ -154,11 +168,7 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
       if (crewElementRef.current) crewElementRef.current.style.backgroundPositionX = `${walkFrame * 12.5}%`;
 
       const viewport = viewportRef.current;
-      if (viewport) {
-        const target = (next / 100) * viewport.scrollWidth;
-        const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
-        viewport.scrollLeft = Math.max(0, Math.min(maxScroll, target - viewport.clientWidth * 0.45));
-      }
+      if (viewport) keepPlayerInView(viewport, next);
 
       // Nearby-station UI and co-op only need periodic state updates. The
       // character itself stays at display refresh rate through the DOM ref.
@@ -214,11 +224,8 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
 
   const followPlayer = useCallback(() => {
     const viewport = viewportRef.current;
-    const stage = viewport?.querySelector<HTMLElement>('.operations-scene');
-    if (!viewport || !stage) return;
-    const target = (visiblePlayerXRef.current / 100) * stage.scrollWidth;
-    const maxScroll = Math.max(0, stage.scrollWidth - viewport.clientWidth);
-    viewport.scrollLeft = Math.max(0, Math.min(maxScroll, target - viewport.clientWidth * 0.45));
+    if (!viewport) return;
+    keepPlayerInView(viewport, visiblePlayerXRef.current);
   }, []);
 
   useEffect(() => {

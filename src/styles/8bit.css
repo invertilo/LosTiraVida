@@ -990,8 +990,8 @@
 .operations-heading { display:flex; align-items:end; justify-content:space-between; gap:16px; padding:8px 4px; }
 .operations-score { padding:10px 12px; border:2px solid var(--px-cyan); background:var(--px-black); color:var(--px-cyan); font:.48rem var(--font-pixel); white-space:nowrap; }
 .operations-score strong { color:var(--px-yellow); font-size:.76rem; }
-.operations-viewport { position:relative; width:100%; min-width:0; max-width:100%; height:clamp(390px,48vw,540px); overflow-x:auto; overflow-y:hidden; border:4px solid #080d17; background:#111a28; box-shadow:inset 0 0 0 2px #53637a,8px 8px 0 #080d17; scrollbar-width:thin; scrollbar-color:#58c7cf #142136; touch-action:pan-x; }
-.operations-viewport::-webkit-scrollbar { height:10px; }.operations-viewport::-webkit-scrollbar-track { background:#142136; }.operations-viewport::-webkit-scrollbar-thumb { border:2px solid #142136; background:#58c7cf; }
+.operations-viewport { position:relative; width:100%; min-width:0; max-width:100%; height:clamp(390px,48vw,540px); overflow-x:auto; overflow-y:hidden; border:4px solid #080d17; background:#111a28; box-shadow:inset 0 0 0 2px #53637a,8px 8px 0 #080d17; scrollbar-width:none; -ms-overflow-style:none; touch-action:pan-x; }
+.operations-viewport::-webkit-scrollbar { display:none; }
 .operations-scene { position:relative; width:2200px; height:100%; overflow:hidden; isolation:isolate; background:#18233a; }
 .operations-scene::before { content:""; position:absolute; inset:0; z-index:0; background:linear-gradient(180deg,#08111b78 0%,transparent 25%,transparent 76%,#08111b45 100%); pointer-events:none; }
 .ship-habitat-art { position:absolute; inset:0 auto 0 0; z-index:0; width:50%; background:url('/sprites/mars-habitat-operations.png') center 58% / cover no-repeat; border-right:8px solid #111a28; }

@@ -56,11 +56,15 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
   const [shieldSetting, setShieldSetting] = useState(50);
   const [toast, setToast] = useState('');
   const [crewChoice, setCrewChoice] = useState<{ station: MaintenanceStation; crewId: string } | null>(null);
+  const playerXRef = useRef(playerX);
+  const facingRef = useRef(facing);
   const movementFrame = useRef<number | undefined>(undefined);
   const lastMovementFrame = useRef(0);
+  const lastPositionSync = useRef(0);
   const pressedKeys = useRef(new Set<string>());
   const pointerDirection = useRef<1 | -1 | 0>(0);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const playerElementRef = useRef<HTMLDivElement>(null);
   const taskCloseRef = useRef<HTMLButtonElement>(null);
   const taskScoreRef = useRef<HTMLDivElement>(null);
   const lastFocusedRef = useRef<HTMLElement | null>(null);
@@ -82,6 +86,10 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
 
   const visiblePlayerX = active && focusStation ? (BASE_STATIONS.find(station => station.id === focusStation)?.x ?? playerX) - 1 : playerX;
   const visiblePlayerXRef = useRef(visiblePlayerX);
+  const setPlayerElement = useCallback((element: HTMLDivElement | null) => {
+    playerElementRef.current = element;
+    if (element) element.style.left = `${visiblePlayerXRef.current}%`;
+  }, []);
   const nearby = stations.find((station) => Math.abs(station.x - visiblePlayerX) < 5.5 && !completed.includes(station.id));
   const activeTaskStation = active && focusStation ? focusStation : taskStation;
   const selected = stations.find((station) => station.id === activeTaskStation);
@@ -111,6 +119,8 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
     if (movementFrame.current !== undefined) cancelAnimationFrame(movementFrame.current);
     movementFrame.current = undefined;
     lastMovementFrame.current = 0;
+    lastPositionSync.current = 0;
+    setPlayerX(playerXRef.current);
     setWalking(false);
   }, []);
 
@@ -120,13 +130,31 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
     const tick = (now: number) => {
       const direction = movementDirection();
       if (!direction) { stopMovement(); return; }
-      setFacing(direction < 0 ? -1 : 1);
+      const nextFacing = direction < 0 ? -1 : 1;
+      if (facingRef.current !== nextFacing) {
+        facingRef.current = nextFacing;
+        setFacing(nextFacing);
+      }
       const elapsed = lastMovementFrame.current ? Math.min(40, now - lastMovementFrame.current) : 16;
       lastMovementFrame.current = now;
-      setPlayerX(current => {
-        const next = Math.max(3, Math.min(97, current + direction * 0.014 * elapsed));
-        return next;
-      });
+      const next = Math.max(3, Math.min(97, playerXRef.current + direction * 0.014 * elapsed));
+      playerXRef.current = next;
+      visiblePlayerXRef.current = next;
+      if (playerElementRef.current) playerElementRef.current.style.left = `${next}%`;
+
+      const viewport = viewportRef.current;
+      if (viewport) {
+        const target = (next / 100) * viewport.scrollWidth;
+        const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
+        viewport.scrollLeft = Math.max(0, Math.min(maxScroll, target - viewport.clientWidth * 0.45));
+      }
+
+      // Nearby-station UI and co-op only need periodic state updates. The
+      // character itself stays at display refresh rate through the DOM ref.
+      if (!lastPositionSync.current || now - lastPositionSync.current >= 80) {
+        lastPositionSync.current = now;
+        setPlayerX(next);
+      }
       movementFrame.current = requestAnimationFrame(tick);
     };
     movementFrame.current = requestAnimationFrame(tick);
@@ -182,7 +210,11 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
     viewport.scrollLeft = Math.max(0, Math.min(maxScroll, target - viewport.clientWidth * 0.45));
   }, []);
 
-  useEffect(() => { visiblePlayerXRef.current = visiblePlayerX; }, [visiblePlayerX]);
+  useEffect(() => {
+    visiblePlayerXRef.current = visiblePlayerX;
+    playerXRef.current = visiblePlayerX;
+    if (playerElementRef.current) playerElementRef.current.style.left = `${visiblePlayerX}%`;
+  }, [visiblePlayerX]);
   useEffect(followPlayer, [followPlayer, visiblePlayerX]);
 
   useEffect(() => {
@@ -315,7 +347,7 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
           </button>
         ))}
 
-        <div className={`ship-player crew-${crewCondition}`} style={{ left: `${visiblePlayerX}%` }} role="img" aria-label={deckCrew ? `${deckCrew.name}, ${crewCondition === 'healthy' ? 'en buen estado' : crewCondition}` : 'Astronauta'}>
+        <div ref={setPlayerElement} className={`ship-player crew-${crewCondition}`} role="img" aria-label={deckCrew ? `${deckCrew.name}, ${crewCondition === 'healthy' ? 'en buen estado' : crewCondition}` : 'Astronauta'}>
           <span className={`operation-crew ${walking ? 'is-walking' : ''}`} aria-hidden="true" style={{ transform: facing < 0 ? 'scaleX(-1)' : undefined }} />
           <span className="player-shadow" />
           {crewCondition !== 'healthy' && <span className="crew-condition-mark" aria-hidden="true">{deckCrew?.name} · {crewConditionLabel}</span>}

@@ -144,7 +144,7 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
 
   useEffect(() => {
     const preload = new Image();
-    preload.src = '/sprites/astronaut-walk.gif';
+    preload.src = '/sprites/astronaut-v2-walk.png';
     return () => stopMovement();
   }, [stopMovement]);
 
@@ -316,10 +316,7 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
         ))}
 
         <div className={`ship-player crew-${crewCondition}`} style={{ left: `${visiblePlayerX}%` }} role="img" aria-label={deckCrew ? `${deckCrew.name}, ${crewCondition === 'healthy' ? 'en buen estado' : crewCondition}` : 'Astronauta'}>
-          <picture>
-            <source media="(prefers-reduced-motion: reduce)" srcSet="/sprites/astronaut-idle.png" />
-            <img className="operation-crew" src={walking ? '/sprites/astronaut-walk.gif' : '/sprites/astronaut-idle.png'} alt="" style={{ transform: facing < 0 ? 'scaleX(-1)' : undefined }} />
-          </picture>
+          <span className={`operation-crew ${walking ? 'is-walking' : ''}`} aria-hidden="true" style={{ transform: facing < 0 ? 'scaleX(-1)' : undefined }} />
           <span className="player-shadow" />
           {crewCondition !== 'healthy' && <span className="crew-condition-mark" aria-hidden="true">{deckCrew?.name} · {crewConditionLabel}</span>}
           {coop?.session && <span className="coop-player-name">{coop.session.playerName}</span>}
@@ -328,7 +325,7 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
           const movement = coop.movements[player.id];
           const remoteX = movement?.x ?? 8 + (index + 1) * 2;
           return <div key={player.id} className={`ship-player remote-player coop-color-${(coop.players.findIndex(item => item.id === player.id) + 4) % 4}`} style={{ left: `${remoteX}%` }} role="img" aria-label={`${player.name}, jugador conectado`}>
-            <img className="operation-crew" src={movement?.walking ? '/sprites/astronaut-walk.gif' : '/sprites/astronaut-idle.png'} alt="" style={{ transform: movement?.facing === -1 ? 'scaleX(-1)' : undefined }} />
+            <span className={`operation-crew ${movement?.walking ? 'is-walking' : ''}`} aria-hidden="true" style={{ transform: movement?.facing === -1 ? 'scaleX(-1)' : undefined }} />
             <span className="player-shadow" />
             <span className="coop-player-name">{player.name}</span>
           </div>;

@@ -380,7 +380,7 @@ export function OperationsDeck({ state, onCompleteTask, disabled = false, active
             <span className="coop-player-name">{player.name}</span>
           </div>;
         })}
-        {nearby && !taskOpen && <button type="button" className="interact-prompt" style={{ left: `${visiblePlayerX}%` }} onClick={openNearby} disabled={disabled}>E · {nearby.active ? 'REPARAR' : 'USAR'} {nearby.label}</button>}
+        {nearby && !taskOpen && <button type="button" className="interact-prompt" onClick={openNearby} disabled={disabled}>E · {nearby.active ? 'REPARAR' : 'USAR'} {nearby.label}</button>}
 
       </div>
       {activeTaskStation && selected && (
